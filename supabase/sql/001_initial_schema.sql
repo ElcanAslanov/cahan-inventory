@@ -234,3 +234,54 @@ create trigger trg_inventory_items_updated_at
 before update on public.inventory_items
 for each row
 execute function public.set_updated_at();
+
+
+alter table public.profiles enable row level security;
+alter table public.roles enable row level security;
+alter table public.companies enable row level security;
+alter table public.departments enable row level security;
+
+drop policy if exists "Users can read own profile" on public.profiles;
+create policy "Users can read own profile"
+on public.profiles
+for select
+to authenticated
+using (id = auth.uid());
+
+drop policy if exists "Authenticated can read roles" on public.roles;
+create policy "Authenticated can read roles"
+on public.roles
+for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated can read companies" on public.companies;
+create policy "Authenticated can read companies"
+on public.companies
+for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated can read departments" on public.departments;
+create policy "Authenticated can read departments"
+on public.departments
+for select
+to authenticated
+using (true);
+
+alter table public.inventory_categories enable row level security;
+alter table public.inventory_items enable row level security;
+
+drop policy if exists "Authenticated can read inventory categories" on public.inventory_categories;
+create policy "Authenticated can read inventory categories"
+on public.inventory_categories
+for select
+to authenticated
+using (true);
+
+drop policy if exists "Authenticated can read inventory items" on public.inventory_items;
+create policy "Authenticated can read inventory items"
+on public.inventory_items
+for select
+to authenticated
+using (true);
