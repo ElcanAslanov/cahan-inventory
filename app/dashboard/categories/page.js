@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import "@/styles/settings-pages.css";
+import "@/styles/categories.css";
 
 const STATUS_OPTIONS = [
   { value: "ACTIVE", label: "Aktiv" },

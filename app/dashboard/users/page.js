@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import "@/styles/settings-pages.css";
+import "@/styles/users.css";
 
 const ROLE_OPTIONS = [
   { value: "ADMIN", label: "Admin" },
