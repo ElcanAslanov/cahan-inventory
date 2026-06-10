@@ -50,7 +50,7 @@ export default function LoginForm() {
   }
 
   return (
-    <main className="auth-page">
+    <>
       <div className="auth-orb auth-orb-one" />
       <div className="auth-orb auth-orb-two" />
       <div className="auth-grid-lines" />
@@ -75,7 +75,8 @@ export default function LoginForm() {
             </div>
 
             <h2>
-              Inventarları, əsas vəsaitləri və təhkimləri vahid paneldə idarə et.
+              Inventarları, əsas vəsaitləri və təhkimləri vahid paneldə idarə
+              et.
             </h2>
 
             <p>
@@ -101,11 +102,13 @@ export default function LoginForm() {
                   Aktiv inventarlar
                   <b>428</b>
                 </p>
+
                 <p>
                   <span className="auth-dot cyan" />
                   Təhkim olunmuş
                   <b>312</b>
                 </p>
+
                 <p>
                   <span className="auth-dot amber" />
                   Təmirdə
@@ -116,6 +119,7 @@ export default function LoginForm() {
 
             <div className="auth-float-card auth-float-small">
               <span className="auth-scan-icon">⌁</span>
+
               <div>
                 <strong>Ciddi izləmə</strong>
                 <p>Model, kod və sənədlər</p>
@@ -130,11 +134,12 @@ export default function LoginForm() {
         </div>
 
         <div className="auth-form-zone">
-          <form onSubmit={handleLogin} className="auth-card auth-animate auth-delay-4">
+          <form
+            onSubmit={handleLogin}
+            className="auth-card auth-animate auth-delay-4"
+          >
             <div className="auth-card-header">
-              
               <h3>Xoş gəlmişsiniz!</h3>
-              
             </div>
 
             {urlError === "inactive" && (
@@ -145,6 +150,7 @@ export default function LoginForm() {
 
             <label className="auth-field">
               <span>Email</span>
+
               <input
                 type="email"
                 placeholder="email@cahan.az"
@@ -190,6 +196,6 @@ export default function LoginForm() {
           </form>
         </div>
       </section>
-    </main>
+    </>
   );
 }
