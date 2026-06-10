@@ -3,6 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+const ROLES = {
+  ADMIN: "ADMIN",
+  REHBER: "REHBER",
+  USER: "USER",
+  IZLEYICI: "IZLEYICI",
+  AUDIT: "AUDIT",
+};
+
 const MENU = [
   {
     group: "Əsas",
@@ -11,19 +19,36 @@ const MENU = [
         label: "Dashboard",
         href: "/dashboard",
         icon: "⌂",
-        roles: ["ADMIN", "REHBER", "USER"],
+        roles: [
+          ROLES.ADMIN,
+          ROLES.REHBER,
+          ROLES.USER,
+          ROLES.IZLEYICI,
+          ROLES.AUDIT,
+        ],
       },
       {
         label: "İnventarlar",
         href: "/dashboard/inventory",
         icon: "◈",
-        roles: ["ADMIN", "REHBER"],
+        roles: [ROLES.ADMIN, ROLES.REHBER, ROLES.IZLEYICI, ROLES.AUDIT],
       },
       {
         label: "Mənim inventarlarım",
         href: "/dashboard/my-inventory",
         icon: "◎",
-        roles: ["ADMIN", "REHBER", "USER"],
+        roles: [ROLES.ADMIN, ROLES.REHBER, ROLES.USER],
+      },
+    ],
+  },
+  {
+    group: "Hesabat",
+    items: [
+      {
+        label: "Audit / Hesabatlar",
+        href: "/dashboard/audit",
+        icon: "◷",
+        roles: [ROLES.ADMIN, ROLES.AUDIT],
       },
     ],
   },
@@ -34,29 +59,58 @@ const MENU = [
         label: "Şirkətlər",
         href: "/dashboard/companies",
         icon: "◇",
-        roles: ["ADMIN"],
+        roles: [ROLES.ADMIN],
       },
       {
         label: "Departamentlər",
         href: "/dashboard/departments",
         icon: "▤",
-        roles: ["ADMIN"],
+        roles: [ROLES.ADMIN],
       },
       {
         label: "Kateqoriyalar",
         href: "/dashboard/categories",
         icon: "▦",
-        roles: ["ADMIN"],
+        roles: [ROLES.ADMIN, ROLES.REHBER],
       },
       {
         label: "İstifadəçilər",
         href: "/dashboard/users",
         icon: "◌",
-        roles: ["ADMIN"],
+        roles: [ROLES.ADMIN],
       },
     ],
   },
 ];
+
+function normalizeRole(role) {
+  return String(role || ROLES.USER).trim().toUpperCase();
+}
+
+function getCurrentRole(me, role) {
+  return normalizeRole(
+    role ||
+      me?.roles?.name ||
+      me?.role ||
+      me?.user_role ||
+      me?.role_name ||
+      ROLES.USER
+  );
+}
+
+function getRoleLabel(role) {
+  const currentRole = normalizeRole(role);
+
+  const labels = {
+    [ROLES.ADMIN]: "Admin",
+    [ROLES.REHBER]: "Rəhbər",
+    [ROLES.USER]: "İstifadəçi",
+    [ROLES.IZLEYICI]: "İzləyici",
+    [ROLES.AUDIT]: "Audit",
+  };
+
+  return labels[currentRole] || currentRole;
+}
 
 function isActivePath(pathname, href) {
   if (href === "/dashboard") {
@@ -66,28 +120,59 @@ function isActivePath(pathname, href) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function getInitials(value) {
+  const text = String(value || "U").trim();
+
+  if (!text) return "U";
+
+  const parts = text.split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return text.slice(0, 1).toUpperCase();
+}
+
 export default function Sidebar({ me, role, open, onClose }) {
   const pathname = usePathname();
 
-  const currentRole = role || me?.user_role || me?.role || "USER";
+  const currentRole = getCurrentRole(me, role);
 
   const visibleGroups = MENU.map((group) => ({
     ...group,
-    items: group.items.filter((item) => item.roles.includes(currentRole)),
+    items: group.items.filter((item) =>
+      item.roles.map(normalizeRole).includes(currentRole)
+    ),
   })).filter((group) => group.items.length > 0);
+
+  const displayName = me?.full_name || me?.email || "User";
+  const roleLabel = me?.roles?.label || getRoleLabel(currentRole);
+  const companyName = me?.companies?.name || me?.company_name || "-";
 
   return (
     <>
       <aside className={`dash-sidebar ${open ? "is-open" : ""}`}>
         <div className="dash-sidebar-brand">
-          <div className="dash-logo">
-            <span>CI</span>
-          </div>
+          <Link href="/dashboard" className="dash-brand-link" onClick={onClose}>
+            <div className="dash-logo">
+              <span>CI</span>
+            </div>
 
-          <div>
-            <p>Cahan Holding</p>
-            <h2>Inventory</h2>
-          </div>
+            <div className="dash-brand-text">
+              <p>Cahan Holding</p>
+              <h2>Inventory</h2>
+            </div>
+          </Link>
+
+          <button
+            type="button"
+            className="dash-sidebar-mobile-close"
+            onClick={onClose}
+            aria-label="Menyunu bağla"
+          >
+            ×
+          </button>
         </div>
 
         <div className="dash-sidebar-section">
@@ -105,9 +190,11 @@ export default function Sidebar({ me, role, open, onClose }) {
                       href={item.href}
                       onClick={onClose}
                       className={`dash-nav-link ${active ? "active" : ""}`}
+                      title={item.label}
+                      aria-current={active ? "page" : undefined}
                     >
                       <span className="dash-nav-icon">{item.icon}</span>
-                      <span>{item.label}</span>
+                      <span className="dash-nav-text">{item.label}</span>
                     </Link>
                   );
                 })}
@@ -118,15 +205,12 @@ export default function Sidebar({ me, role, open, onClose }) {
 
         <div className="dash-sidebar-bottom">
           <div className="dash-user-mini">
-            <div className="dash-user-avatar">
-              {(me?.full_name || me?.email || "U").slice(0, 1).toUpperCase()}
-            </div>
+            <div className="dash-user-avatar">{getInitials(displayName)}</div>
 
-            <div>
-              <strong>{me?.full_name || me?.email || "User"}</strong>
+            <div className="dash-user-mini-text">
+              <strong>{displayName}</strong>
               <p>
-                {me?.roles?.label || currentRole} ·{" "}
-                {me?.companies?.name || me?.company_name || "-"}
+                {roleLabel} · {companyName}
               </p>
             </div>
           </div>

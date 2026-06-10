@@ -7,12 +7,21 @@ import Topbar from "./Topbar";
 
 export default function DashboardShell({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState(null);
 
   useEffect(() => {
     loadMe();
   }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle("dash-no-scroll", sidebarOpen);
+
+    return () => {
+      document.body.classList.remove("dash-no-scroll");
+    };
+  }, [sidebarOpen]);
 
   async function loadMe() {
     setLoading(true);
@@ -65,6 +74,19 @@ export default function DashboardShell({ children }) {
 
   const role = me?.roles?.name || "USER";
 
+  function handleMenuClick() {
+    if (typeof window !== "undefined" && window.innerWidth <= 980) {
+      setSidebarOpen((prev) => !prev);
+      return;
+    }
+
+    setSidebarCollapsed((prev) => !prev);
+  }
+
+  function closeSidebar() {
+    setSidebarOpen(false);
+  }
+
   if (loading) {
     return (
       <main className="dash-loading-page">
@@ -80,16 +102,21 @@ export default function DashboardShell({ children }) {
   }
 
   return (
-    <div className="dash-layout">
+    <div className={`dash-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <Sidebar
         me={me}
         role={role}
         open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        onClose={closeSidebar}
       />
 
       <main className="dash-main">
-        <Topbar me={me} onMenuClick={() => setSidebarOpen(true)} />
+        <Topbar
+          me={me}
+          sidebarOpen={sidebarOpen}
+          sidebarCollapsed={sidebarCollapsed}
+          onMenuClick={handleMenuClick}
+        />
 
         <section className="dash-content">{children}</section>
       </main>

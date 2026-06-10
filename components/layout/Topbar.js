@@ -2,10 +2,23 @@
 
 import LogoutButton from "../../app/dashboard/LogoutButton";
 
-export default function Topbar({ me, onMenuClick }) {
+export default function Topbar({
+  me,
+  onMenuClick,
+  sidebarOpen,
+  sidebarCollapsed,
+}) {
   return (
     <header className="dash-topbar">
-      <button type="button" className="dash-menu-btn" onClick={onMenuClick}>
+      <button
+        type="button"
+        className={`dash-menu-btn ${sidebarOpen ? "is-open" : ""} ${
+          sidebarCollapsed ? "is-collapsed" : ""
+        }`}
+        onClick={onMenuClick}
+        aria-label="Menyunu aç və ya yığ"
+        title="Menyu"
+      >
         <span />
         <span />
         <span />

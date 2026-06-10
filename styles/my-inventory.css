@@ -955,3 +955,71 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* =====================================================
+   My Inventory Report Buttons
+===================================================== */
+
+.my-inventory-hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.my-inventory-report-btn {
+  height: 46px;
+  border: 1px solid #dbe3ef;
+  border-radius: 15px;
+  padding: 0 15px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    opacity 0.16s ease;
+}
+
+.my-inventory-report-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.1);
+}
+
+.my-inventory-report-btn.excel {
+  border-color: #bbf7d0;
+  background: linear-gradient(135deg, #ecfdf5, #ffffff);
+  color: #15803d;
+}
+
+.my-inventory-report-btn.print {
+  border-color: #bae6fd;
+  background: linear-gradient(135deg, #f0f9ff, #ffffff);
+  color: #0369a1;
+}
+
+.my-inventory-report-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .my-inventory-hero-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .my-inventory-report-btn,
+  .my-inventory-hero-actions .settings-primary-btn {
+    width: 100%;
+  }
+}

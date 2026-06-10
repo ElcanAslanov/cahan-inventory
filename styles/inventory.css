@@ -2576,3 +2576,71 @@
     height: 180px;
   }
 }
+
+/* =====================================================
+   Inventory Report Buttons
+===================================================== */
+
+.inventory-hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inventory-report-btn {
+  height: 48px;
+  border: 1px solid #dbe3ee;
+  border-radius: 16px;
+  padding: 0 16px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    opacity 0.16s ease;
+}
+
+.inventory-report-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.1);
+}
+
+.inventory-report-btn.excel {
+  border-color: #bbf7d0;
+  background: linear-gradient(135deg, #ecfdf5, #ffffff);
+  color: #15803d;
+}
+
+.inventory-report-btn.print {
+  border-color: #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff, #ffffff);
+  color: #1d4ed8;
+}
+
+.inventory-report-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .inventory-hero-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-report-btn,
+  .inventory-hero-actions .inventory-primary-btn {
+    width: 100%;
+  }
+}

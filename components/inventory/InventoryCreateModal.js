@@ -51,17 +51,42 @@ const INITIAL_FORM = {
   note: "",
 };
 
+function normalizeRole(role) {
+  return String(role || "USER").toUpperCase();
+}
+
+function canCreateInventory(role) {
+  return ["ADMIN", "REHBER"].includes(normalizeRole(role));
+}
+
+function isAdmin(role) {
+  return normalizeRole(role) === "ADMIN";
+}
+
+function isRehber(role) {
+  return normalizeRole(role) === "REHBER";
+}
+
 export default function InventoryCreateModal({ open, onClose, onCreated }) {
   const [mounted, setMounted] = useState(false);
   const [activeStep, setActiveStep] = useState("basic");
   const [form, setForm] = useState(INITIAL_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [optionsLoading, setOptionsLoading] = useState(false);
 
   const [companies, setCompanies] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [categories, setCategories] = useState([]);
   const [profiles, setProfiles] = useState([]);
+  const [me, setMe] = useState(null);
+
+  const currentRole = normalizeRole(me?.roles?.name || me?.role || "USER");
+  const currentCompanyId = me?.company_id || me?.companies?.id || "";
+
+  const canCreate = canCreateInventory(currentRole);
+  const rehberMode = isRehber(currentRole) && currentCompanyId;
+  const adminMode = isAdmin(currentRole);
 
   useEffect(() => {
     setMounted(true);
@@ -100,28 +125,108 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
   }, [open, onClose]);
 
   async function loadOptions() {
+    setOptionsLoading(true);
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setMe(null);
+      setError("Sessiya tapılmadı. Yenidən giriş edin.");
+      setOptionsLoading(false);
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select(
+        `
+        id,
+        full_name,
+        email,
+        company_id,
+        status,
+        roles (
+          id,
+          name,
+          label
+        ),
+        companies (
+          id,
+          name
+        )
+      `
+      )
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError || !profile) {
+      console.error("PROFILE LOAD ERROR:", profileError);
+      setMe(null);
+      setError("Profil məlumatı tapılmadı.");
+      setOptionsLoading(false);
+      return;
+    }
+
+    setMe(profile);
+
+    const role = normalizeRole(profile?.roles?.name || profile?.role || "USER");
+    const companyId = profile?.company_id || profile?.companies?.id || "";
+
+    if (!canCreateInventory(role)) {
+      setError(
+        "Bu əməliyyat üçün icazəniz yoxdur. Yalnız ADMIN və REHBER inventar əlavə edə bilər."
+      );
+      setCompanies([]);
+      setDepartments([]);
+      setCategories([]);
+      setProfiles([]);
+      setOptionsLoading(false);
+      return;
+    }
+
+    const companyQuery = supabase
+      .from("companies")
+      .select("id,name,status")
+      .eq("status", "ACTIVE")
+      .order("name");
+
+    if (isRehber(role) && companyId) {
+      companyQuery.eq("id", companyId);
+    }
+
+    const departmentQuery = supabase
+      .from("departments")
+      .select("id,name,company_id,status")
+      .eq("status", "ACTIVE")
+      .order("name");
+
+    if (isRehber(role) && companyId) {
+      departmentQuery.eq("company_id", companyId);
+    }
+
+    const profileQuery = supabase
+      .from("profiles")
+      .select("id,full_name,email,company_id,status")
+      .eq("status", "ACTIVE")
+      .order("full_name");
+
+    if (isRehber(role) && companyId) {
+      profileQuery.eq("company_id", companyId);
+    }
+
     const [companiesRes, departmentsRes, categoriesRes, profilesRes] =
       await Promise.all([
-        supabase
-          .from("companies")
-          .select("id,name,status")
-          .eq("status", "ACTIVE")
-          .order("name"),
-        supabase
-          .from("departments")
-          .select("id,name,company_id,status")
-          .eq("status", "ACTIVE")
-          .order("name"),
+        companyQuery,
+        departmentQuery,
         supabase
           .from("inventory_categories")
           .select("id,name,status")
           .eq("status", "ACTIVE")
           .order("name"),
-        supabase
-          .from("profiles")
-          .select("id,full_name,email,company_id,status")
-          .eq("status", "ACTIVE")
-          .order("full_name"),
+        profileQuery,
       ]);
 
     if (companiesRes.error) console.error("companies error", companiesRes.error);
@@ -131,10 +236,34 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       console.error("categories error", categoriesRes.error);
     if (profilesRes.error) console.error("profiles error", profilesRes.error);
 
-    setCompanies(companiesRes.data || []);
-    setDepartments(departmentsRes.data || []);
-    setCategories(categoriesRes.data || []);
-    setProfiles(profilesRes.data || []);
+    const nextCompanies = companiesRes.data || [];
+    const nextDepartments = departmentsRes.data || [];
+    const nextCategories = categoriesRes.data || [];
+    const nextProfiles = profilesRes.data || [];
+
+    setCompanies(nextCompanies);
+    setDepartments(nextDepartments);
+    setCategories(nextCategories);
+    setProfiles(nextProfiles);
+
+    if (isRehber(role) && companyId) {
+      setForm((prev) => ({
+        ...prev,
+        company_id: companyId,
+        department_id:
+          prev.department_id &&
+          nextDepartments.some((dept) => dept.id === prev.department_id)
+            ? prev.department_id
+            : "",
+        responsible_user_id:
+          prev.responsible_user_id &&
+          nextProfiles.some((person) => person.id === prev.responsible_user_id)
+            ? prev.responsible_user_id
+            : "",
+      }));
+    }
+
+    setOptionsLoading(false);
   }
 
   const filteredDepartments = useMemo(() => {
@@ -176,7 +305,33 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
     return value || null;
   }
 
+  function validateCurrentStep() {
+    if (activeStep === "basic") {
+      if (!form.inventory_code.trim()) {
+        setError("İnventar kodu məcburidir.");
+        return false;
+      }
+
+      if (!form.name.trim()) {
+        setError("İnventar adı məcburidir.");
+        return false;
+      }
+    }
+
+    if (activeStep === "owner") {
+      if (rehberMode && !form.company_id) {
+        setError("REHBER üçün şirkət məlumatı məcburidir.");
+        return false;
+      }
+    }
+
+    setError("");
+    return true;
+  }
+
   function goNext() {
+    if (!validateCurrentStep()) return;
+
     if (activeStep === "basic") {
       setActiveStep("owner");
       return;
@@ -188,6 +343,8 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
   }
 
   function goBack() {
+    setError("");
+
     if (activeStep === "finance") {
       setActiveStep("owner");
       return;
@@ -204,6 +361,14 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
     setSaving(true);
     setError("");
 
+    if (!canCreate) {
+      setError(
+        "Bu əməliyyat üçün icazəniz yoxdur. Yalnız ADMIN və REHBER inventar əlavə edə bilər."
+      );
+      setSaving(false);
+      return;
+    }
+
     if (!form.inventory_code.trim()) {
       setActiveStep("basic");
       setError("İnventar kodu məcburidir.");
@@ -214,6 +379,13 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
     if (!form.name.trim()) {
       setActiveStep("basic");
       setError("İnventar adı məcburidir.");
+      setSaving(false);
+      return;
+    }
+
+    if (rehberMode && form.company_id !== currentCompanyId) {
+      setActiveStep("owner");
+      setError("REHBER yalnız öz şirkəti üçün inventar əlavə edə bilər.");
       setSaving(false);
       return;
     }
@@ -264,12 +436,18 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
     }
 
     if (payload.responsible_user_id && data?.id) {
-      await supabase.from("inventory_assignments").insert({
-        inventory_id: data.id,
-        assigned_to: payload.responsible_user_id,
-        status: "ACTIVE",
-        note: "İnventar yaradılarkən avtomatik təhkim edildi.",
-      });
+      const { error: assignmentError } = await supabase
+        .from("inventory_assignments")
+        .insert({
+          inventory_id: data.id,
+          assigned_to: payload.responsible_user_id,
+          status: "ACTIVE",
+          note: "İnventar yaradılarkən avtomatik təhkim edildi.",
+        });
+
+      if (assignmentError) {
+        console.error("INVENTORY ASSIGNMENT INSERT ERROR:", assignmentError);
+      }
     }
 
     onCreated?.();
@@ -347,19 +525,19 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
               </div>
 
               <div>
-                <span>Kateqoriya</span>
-                <strong>{selectedCategory?.name || "Seçilməyib"}</strong>
+                <span>Rol</span>
+                <strong>{me?.roles?.label || currentRole}</strong>
               </div>
             </div>
 
             <div className="assetSmartBox">
               <div>
-                <span>Health Score</span>
-                <strong>Auto</strong>
+                <span>Access mode</span>
+                <strong>{adminMode ? "All" : rehberMode ? "Company" : "Read"}</strong>
               </div>
               <p>
-                Sistem status, vəziyyət, alış tarixi və təmir tarixçəsinə əsasən
-                balı avtomatik hesablayacaq.
+                ADMIN bütün şirkətlər üçün, REHBER isə öz şirkəti üçün inventar
+                əlavə edə bilər.
               </p>
             </div>
           </aside>
@@ -382,7 +560,10 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                   key={step.key}
                   type="button"
                   className={activeStep === step.key ? "active" : ""}
-                  onClick={() => setActiveStep(step.key)}
+                  onClick={() => {
+                    if (step.key !== activeStep && !validateCurrentStep()) return;
+                    setActiveStep(step.key);
+                  }}
                 >
                   <i>{index + 1}</i>
                   <span>{step.label}</span>
@@ -391,6 +572,22 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
             </div>
 
             {error && <div className="assetAlert">{error}</div>}
+
+            {optionsLoading && (
+              <div className="assetAlert assetInfoAlert">
+                Məlumatlar yüklənir...
+              </div>
+            )}
+
+            {!canCreate && !optionsLoading && (
+              <div className="assetPermissionBox">
+                <strong>İcazə yoxdur</strong>
+                <p>
+                  Bu istifadəçi rolu ilə inventar əlavə etmək mümkün deyil.
+                  İcazə verilən rollar: ADMIN və REHBER.
+                </p>
+              </div>
+            )}
 
             <div className="assetFormBody">
               {activeStep === "basic" && (
@@ -406,6 +603,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       }
                       placeholder="Məs: INV-0002"
                       required
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -415,6 +613,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       onChange={(e) => setField("name", e.target.value)}
                       placeholder="Məs: HP LaserJet Printer"
                       required
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -423,6 +622,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       value={form.brand}
                       onChange={(e) => setField("brand", e.target.value)}
                       placeholder="Məs: Lenovo"
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -431,6 +631,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       value={form.model}
                       onChange={(e) => setField("model", e.target.value)}
                       placeholder="Məs: ThinkPad X1"
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -441,6 +642,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                         setField("serial_number", e.target.value)
                       }
                       placeholder="SN-..."
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -452,6 +654,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       }
                       placeholder="İnventar haqqında qısa məlumat..."
                       rows={3}
+                      disabled={!canCreate || saving}
                     />
                   </Field>
                 </FormGroup>
@@ -466,6 +669,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                     <select
                       value={form.company_id}
                       onChange={(e) => setField("company_id", e.target.value)}
+                      disabled={!canCreate || saving || rehberMode}
                     >
                       <option value="">Seçilməyib</option>
                       {companies.map((item) => (
@@ -482,6 +686,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       onChange={(e) =>
                         setField("department_id", e.target.value)
                       }
+                      disabled={!canCreate || saving || !form.company_id}
                     >
                       <option value="">Seçilməyib</option>
                       {filteredDepartments.map((item) => (
@@ -496,6 +701,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                     <select
                       value={form.category_id}
                       onChange={(e) => setField("category_id", e.target.value)}
+                      disabled={!canCreate || saving}
                     >
                       <option value="">Seçilməyib</option>
                       {categories.map((item) => (
@@ -512,6 +718,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       onChange={(e) =>
                         setField("responsible_user_id", e.target.value)
                       }
+                      disabled={!canCreate || saving || !form.company_id}
                     >
                       <option value="">Təhkim edilməyib</option>
                       {filteredProfiles.map((item) => (
@@ -529,6 +736,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                         setField("current_location", e.target.value)
                       }
                       placeholder="Məs: Baş ofis, 2-ci mərtəbə"
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -555,7 +763,11 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                     <select
                       value={form.status}
                       onChange={(e) => setField("status", e.target.value)}
-                      disabled={Boolean(form.responsible_user_id)}
+                      disabled={
+                        !canCreate ||
+                        saving ||
+                        Boolean(form.responsible_user_id)
+                      }
                     >
                       {STATUS_OPTIONS.map((item) => (
                         <option key={item.value} value={item.value}>
@@ -569,6 +781,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                     <select
                       value={form.condition}
                       onChange={(e) => setField("condition", e.target.value)}
+                      disabled={!canCreate || saving}
                     >
                       {CONDITION_OPTIONS.map((item) => (
                         <option key={item.value} value={item.value}>
@@ -585,6 +798,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       onChange={(e) =>
                         setField("purchase_date", e.target.value)
                       }
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -598,6 +812,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                         setField("purchase_price", e.target.value)
                       }
                       placeholder="0.00"
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -605,6 +820,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                     <select
                       value={form.currency}
                       onChange={(e) => setField("currency", e.target.value)}
+                      disabled={!canCreate || saving}
                     >
                       <option value="AZN">AZN</option>
                       <option value="USD">USD</option>
@@ -622,6 +838,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                         setField("useful_life_months", e.target.value)
                       }
                       placeholder="Məs: 60"
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -632,6 +849,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       onChange={(e) =>
                         setField("warranty_start_date", e.target.value)
                       }
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -642,6 +860,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       onChange={(e) =>
                         setField("warranty_end_date", e.target.value)
                       }
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -655,6 +874,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                         setField("depreciation_rate", e.target.value)
                       }
                       placeholder="Məs: 20"
+                      disabled={!canCreate || saving}
                     />
                   </Field>
 
@@ -664,6 +884,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       onChange={(e) => setField("note", e.target.value)}
                       placeholder="Əlavə qeydlər..."
                       rows={3}
+                      disabled={!canCreate || saving}
                     />
                   </Field>
                 </FormGroup>
@@ -681,6 +902,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                     type="button"
                     className="assetSoftBtn"
                     onClick={goBack}
+                    disabled={saving}
                   >
                     Geri
                   </button>
@@ -691,13 +913,14 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                     type="button"
                     className="assetNextBtn"
                     onClick={goNext}
+                    disabled={!canCreate || saving || optionsLoading}
                   >
                     Davam et
                   </button>
                 ) : (
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={!canCreate || saving || optionsLoading}
                     className="assetSaveBtn"
                   >
                     {saving ? "Yadda saxlanılır..." : "İnventarı əlavə et"}
@@ -1054,6 +1277,15 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
           color: #ffffff;
         }
 
+        .assetStepTabs button:disabled,
+        .assetGhostBtn:disabled,
+        .assetSoftBtn:disabled,
+        .assetNextBtn:disabled,
+        .assetSaveBtn:disabled {
+          opacity: 0.62;
+          cursor: not-allowed;
+        }
+
         .assetAlert {
           flex: 0 0 auto;
           margin: 0 24px 14px;
@@ -1064,6 +1296,35 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
           padding: 12px 14px;
           font-size: 13px;
           font-weight: 800;
+        }
+
+        .assetInfoAlert {
+          border-color: #bfdbfe;
+          background: #eff6ff;
+          color: #1d4ed8;
+        }
+
+        .assetPermissionBox {
+          margin: 0 24px 14px;
+          border: 1px solid #fde68a;
+          background: #fffbeb;
+          color: #92400e;
+          border-radius: 20px;
+          padding: 14px 16px;
+        }
+
+        .assetPermissionBox strong {
+          display: block;
+          color: #78350f;
+          font-size: 14px;
+          font-weight: 900;
+        }
+
+        .assetPermissionBox p {
+          margin: 6px 0 0;
+          font-size: 13px;
+          line-height: 1.5;
+          font-weight: 700;
         }
 
         .assetFormBody {
@@ -1173,7 +1434,9 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
           box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.1);
         }
 
-        .assetField select:disabled {
+        .assetField input:disabled,
+        .assetField select:disabled,
+        .assetField textarea:disabled {
           background: #f8fafc;
           color: #94a3b8;
           cursor: not-allowed;
@@ -1244,11 +1507,6 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
           background: linear-gradient(135deg, #2563eb, #0284c7);
           color: #ffffff;
           box-shadow: 0 16px 35px rgba(37, 99, 235, 0.25);
-        }
-
-        .assetSaveBtn:disabled {
-          opacity: 0.65;
-          cursor: not-allowed;
         }
 
         @keyframes assetModalEnter {
@@ -1427,6 +1685,12 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
             font-size: 12px;
           }
 
+          .assetPermissionBox {
+            margin: 0 12px 7px;
+            padding: 10px 12px;
+            border-radius: 16px;
+          }
+
           .assetFormBody {
             flex: 1 1 auto;
             min-height: 0;
@@ -1595,6 +1859,10 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
           }
 
           .assetAlert {
+            margin: 0 10px 6px;
+          }
+
+          .assetPermissionBox {
             margin: 0 10px 6px;
           }
 

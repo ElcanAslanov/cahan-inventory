@@ -10,10 +10,20 @@
   --dash-cyan: #06b6d4;
   --dash-sidebar: #07111f;
   --dash-sidebar-soft: rgba(255, 255, 255, 0.07);
+  --dash-sidebar-width: 286px;
+  --dash-sidebar-collapsed-width: 78px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.dash-no-scroll {
+  overflow: hidden;
 }
 
 .dash-layout {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   background:
     radial-gradient(circle at 70% 0%, rgba(37, 99, 235, 0.08), transparent 28%),
@@ -29,21 +39,37 @@
     sans-serif;
 }
 
+/* =====================================================
+   Sidebar
+===================================================== */
+
 .dash-sidebar {
-  width: 286px;
-  min-width: 286px;
-  height: 100vh;
+  width: var(--dash-sidebar-width);
+  min-width: var(--dash-sidebar-width);
+  height: 100dvh;
   position: sticky;
   top: 0;
   padding: 20px;
   background:
     radial-gradient(circle at 20% 0%, rgba(37, 99, 235, 0.3), transparent 28%),
     linear-gradient(180deg, #07111f 0%, #020617 100%);
-  color: #fff;
+  color: #ffffff;
   display: flex;
   flex-direction: column;
   z-index: 50;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  transition:
+    width 220ms ease,
+    min-width 220ms ease,
+    padding 220ms ease,
+    transform 220ms ease;
+}
+
+.dash-layout.sidebar-collapsed .dash-sidebar {
+  width: var(--dash-sidebar-collapsed-width);
+  min-width: var(--dash-sidebar-collapsed-width);
+  padding: 18px 10px;
 }
 
 .dash-sidebar-brand {
@@ -54,9 +80,20 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.dash-brand-link {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  color: inherit;
+  text-decoration: none;
+}
+
 .dash-logo {
   width: 52px;
   height: 52px;
+  min-width: 52px;
   border-radius: 18px;
   display: grid;
   place-items: center;
@@ -82,7 +119,14 @@
   letter-spacing: -0.06em;
 }
 
-.dash-sidebar-brand p {
+.dash-brand-text {
+  min-width: 0;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.dash-brand-text p {
   margin: 0 0 3px;
   color: #94a3b8;
   font-size: 11px;
@@ -91,14 +135,49 @@
   text-transform: uppercase;
 }
 
-.dash-sidebar-brand h2 {
+.dash-brand-text h2 {
   margin: 0;
+  color: #ffffff;
   font-size: 21px;
   letter-spacing: -0.055em;
 }
 
+.dash-sidebar-mobile-close {
+  display: none;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Nav */
+
 .dash-sidebar-section {
+  flex: 1 1 auto;
+  min-height: 0;
   margin-top: 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}
+
+.dash-sidebar-section::-webkit-scrollbar {
+  width: 5px;
+}
+
+.dash-sidebar-section::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.34);
+  border-radius: 999px;
+}
+
+.dash-nav-group + .dash-nav-group {
+  margin-top: 22px;
 }
 
 .dash-sidebar-label {
@@ -109,6 +188,9 @@
   font-weight: 900;
   text-transform: uppercase;
   letter-spacing: 0.12em;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
 }
 
 .dash-nav {
@@ -135,19 +217,20 @@
 
 .dash-nav-link:hover {
   background: rgba(255, 255, 255, 0.07);
-  color: #fff;
+  color: #ffffff;
   transform: translateX(2px);
 }
 
 .dash-nav-link.active {
   background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(2, 132, 199, 0.95));
-  color: #fff;
+  color: #ffffff;
   box-shadow: 0 16px 35px rgba(37, 99, 235, 0.28);
 }
 
 .dash-nav-icon {
   width: 28px;
   height: 28px;
+  min-width: 28px;
   border-radius: 11px;
   display: grid;
   place-items: center;
@@ -159,7 +242,20 @@
   background: rgba(255, 255, 255, 0.18);
 }
 
+.dash-nav-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+/* Sidebar bottom */
+
 .dash-sidebar-bottom {
+  flex: 0 0 auto;
   margin-top: auto;
   padding-top: 18px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -179,17 +275,25 @@
 .dash-topbar-avatar {
   width: 42px;
   height: 42px;
+  min-width: 42px;
   border-radius: 15px;
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, #1d4ed8, #0891b2);
-  color: #fff;
+  color: #ffffff;
   font-weight: 900;
 }
 
-.dash-user-mini strong {
+.dash-user-mini-text {
+  min-width: 0;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.dash-user-mini-text strong {
   display: block;
-  color: #fff;
+  color: #ffffff;
   font-size: 13px;
   font-weight: 900;
   white-space: nowrap;
@@ -197,7 +301,7 @@
   text-overflow: ellipsis;
 }
 
-.dash-user-mini p {
+.dash-user-mini-text p {
   margin: 4px 0 0;
   color: #94a3b8;
   font-size: 11px;
@@ -206,6 +310,89 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* =====================================================
+   Desktop collapsed sidebar
+===================================================== */
+
+.dash-layout.sidebar-collapsed .dash-sidebar-brand {
+  justify-content: center;
+  padding-bottom: 18px;
+}
+
+.dash-layout.sidebar-collapsed .dash-brand-link {
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.dash-layout.sidebar-collapsed .dash-logo {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 17px;
+}
+
+.dash-layout.sidebar-collapsed .dash-brand-text,
+.dash-layout.sidebar-collapsed .dash-sidebar-label,
+.dash-layout.sidebar-collapsed .dash-nav-text,
+.dash-layout.sidebar-collapsed .dash-user-mini-text {
+  opacity: 0;
+  width: 0;
+  max-width: 0;
+  transform: translateX(-8px);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.dash-layout.sidebar-collapsed .dash-sidebar-section {
+  margin-top: 18px;
+  padding-right: 0;
+}
+
+.dash-layout.sidebar-collapsed .dash-nav-group + .dash-nav-group {
+  margin-top: 18px;
+}
+
+.dash-layout.sidebar-collapsed .dash-nav-link {
+  width: 58px;
+  min-height: 52px;
+  justify-content: center;
+  padding: 0;
+  gap: 0;
+  border-radius: 18px;
+}
+
+.dash-layout.sidebar-collapsed .dash-nav-link:hover {
+  transform: none;
+}
+
+.dash-layout.sidebar-collapsed .dash-nav-icon {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 15px;
+}
+
+.dash-layout.sidebar-collapsed .dash-sidebar-bottom {
+  padding-top: 14px;
+}
+
+.dash-layout.sidebar-collapsed .dash-user-mini {
+  width: 58px;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 18px;
+}
+
+.dash-layout.sidebar-collapsed .dash-user-avatar {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+}
+
+/* =====================================================
+   Main / Topbar
+===================================================== */
 
 .dash-main {
   flex: 1;
@@ -229,14 +416,25 @@
 .dash-menu-btn {
   width: 44px;
   height: 44px;
+  min-width: 44px;
   border: 1px solid var(--dash-border);
   border-radius: 15px;
-  background: #fff;
-  display: none;
+  background: #ffffff;
+  display: grid;
   place-items: center;
   gap: 4px;
   padding: 11px;
   cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.dash-menu-btn:hover {
+  transform: translateY(-1px);
+  border-color: #bfdbfe;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
 }
 
 .dash-menu-btn span {
@@ -245,6 +443,36 @@
   height: 2px;
   border-radius: 99px;
   background: #0f172a;
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease,
+    width 180ms ease;
+}
+
+.dash-menu-btn.is-open span:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.dash-menu-btn.is-open span:nth-child(2) {
+  opacity: 0;
+}
+
+.dash-menu-btn.is-open span:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.dash-menu-btn.is-collapsed span:nth-child(1) {
+  width: 12px;
+  transform: translateX(-3px);
+}
+
+.dash-menu-btn.is-collapsed span:nth-child(2) {
+  width: 18px;
+}
+
+.dash-menu-btn.is-collapsed span:nth-child(3) {
+  width: 12px;
+  transform: translateX(3px);
 }
 
 .dash-topbar-title {
@@ -305,6 +533,32 @@
   animation: dash-page-enter 0.38s ease both;
 }
 
+/* Logout */
+
+.dash-logout-btn {
+  height: 42px;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 0 15px;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.dash-logout-btn:hover {
+  transform: translateY(-1px);
+  border-color: #cbd5e1;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+/* Loading */
+
 .dash-loading-page {
   min-height: 100vh;
   display: grid;
@@ -323,7 +577,7 @@
   gap: 13px;
   padding: 18px 20px;
   border-radius: 22px;
-  background: #fff;
+  background: #ffffff;
   border: 1px solid var(--dash-border);
   box-shadow: 0 20px 60px rgba(15, 23, 42, 0.1);
 }
@@ -348,9 +602,13 @@
   animation: dash-pulse 1.4s ease-in-out infinite;
 }
 
+/* Overlay */
+
 .dash-overlay {
   display: none;
 }
+
+/* Animations */
 
 @keyframes dash-shine {
   0%,
@@ -389,31 +647,114 @@
   }
 }
 
+/* =====================================================
+   Mobile / Tablet drawer
+===================================================== */
+
 @media (max-width: 980px) {
-  .dash-sidebar {
+  .dash-layout,
+  .dash-layout.sidebar-collapsed {
+    display: block;
+    min-height: 100dvh;
+  }
+
+  .dash-sidebar,
+  .dash-layout.sidebar-collapsed .dash-sidebar {
+    width: min(286px, 88vw);
+    min-width: min(286px, 88vw);
+    height: 100dvh;
     position: fixed;
     left: 0;
     top: 0;
+    z-index: 60;
+    padding: 20px;
     transform: translateX(-105%);
     transition: transform 0.22s ease;
+    box-shadow: 28px 0 80px rgba(2, 6, 23, 0.38);
   }
 
   .dash-sidebar.is-open {
     transform: translateX(0);
   }
 
-  .dash-menu-btn {
+  .dash-sidebar-mobile-close {
     display: grid;
+    margin-left: auto;
+  }
+
+  .dash-brand-text,
+  .dash-sidebar-label,
+  .dash-nav-text,
+  .dash-user-mini-text,
+  .dash-layout.sidebar-collapsed .dash-brand-text,
+  .dash-layout.sidebar-collapsed .dash-sidebar-label,
+  .dash-layout.sidebar-collapsed .dash-nav-text,
+  .dash-layout.sidebar-collapsed .dash-user-mini-text {
+    opacity: 1;
+    width: auto;
+    max-width: none;
+    transform: none;
+    pointer-events: auto;
+    overflow: visible;
+  }
+
+  .dash-layout.sidebar-collapsed .dash-sidebar-brand {
+    justify-content: flex-start;
+  }
+
+  .dash-layout.sidebar-collapsed .dash-brand-link {
+    justify-content: flex-start;
+    flex: 1;
+  }
+
+  .dash-layout.sidebar-collapsed .dash-logo {
+    width: 52px;
+    height: 52px;
+    min-width: 52px;
+  }
+
+  .dash-layout.sidebar-collapsed .dash-nav-link {
+    width: auto;
+    min-height: 48px;
+    justify-content: flex-start;
+    padding: 0 13px;
+    gap: 11px;
+    border-radius: 16px;
+  }
+
+  .dash-layout.sidebar-collapsed .dash-nav-icon {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 11px;
+  }
+
+  .dash-layout.sidebar-collapsed .dash-user-mini {
+    width: auto;
+    justify-content: flex-start;
+    padding: 12px;
+    border-radius: 20px;
+  }
+
+  .dash-main {
+    min-height: 100dvh;
+  }
+
+  .dash-topbar {
+    height: 70px;
+    padding: 0 14px;
+    gap: 12px;
   }
 
   .dash-overlay {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 40;
+    z-index: 55;
     border: 0;
     background: rgba(2, 6, 23, 0.48);
     backdrop-filter: blur(4px);
+    cursor: pointer;
   }
 
   .dash-topbar-user {
@@ -423,12 +764,25 @@
   .dash-content {
     padding: 20px;
   }
+
+  .dash-menu-btn.is-collapsed span:nth-child(1),
+  .dash-menu-btn.is-collapsed span:nth-child(2),
+  .dash-menu-btn.is-collapsed span:nth-child(3) {
+    width: 18px;
+    transform: none;
+  }
 }
 
 @media (max-width: 560px) {
   .dash-topbar {
-    height: 70px;
-    padding: 0 14px;
+    height: 68px;
+  }
+
+  .dash-menu-btn {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    border-radius: 14px;
   }
 
   .dash-topbar-title p {
@@ -443,9 +797,16 @@
     padding: 14px;
   }
 
-  .dash-sidebar {
+  .dash-sidebar,
+  .dash-layout.sidebar-collapsed .dash-sidebar {
     width: min(286px, 88vw);
     min-width: min(286px, 88vw);
+  }
+
+  .dash-logout-btn {
+    height: 40px;
+    padding: 0 12px;
+    font-size: 12px;
   }
 }
 
@@ -455,28 +816,13 @@
   .dash-content {
     animation: none !important;
   }
+
+  .dash-sidebar,
+  .dash-menu-btn,
+  .dash-nav-link,
+  .dash-brand-text,
+  .dash-nav-text,
+  .dash-user-mini-text {
+    transition: none !important;
+  }
 }
-
-
-.dash-logout-btn {
-  height: 42px;
-  border: 1px solid #e2e8f0;
-  border-radius: 15px;
-  background: #ffffff;
-  color: #0f172a;
-  padding: 0 15px;
-  font-size: 13px;
-  font-weight: 900;
-  cursor: pointer;
-  transition:
-    transform 0.16s ease,
-    box-shadow 0.16s ease,
-    border-color 0.16s ease;
-}
-
-.dash-logout-btn:hover {
-  transform: translateY(-1px);
-  border-color: #cbd5e1;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
-}
-

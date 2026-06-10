@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { createPortal } from "react-dom";
 import { supabase } from "@/lib/supabaseClient";
 import InventoryStatusPill from "./InventoryStatusPill";
@@ -42,6 +43,54 @@ const HEALTH_OPTIONS = [
 ];
 
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+
+const ROLE_NAMES = {
+  ADMIN: "ADMIN",
+  REHBER: "REHBER",
+  USER: "USER",
+  IZLEYICI: "IZLEYICI",
+  AUDIT: "AUDIT",
+};
+
+function normalizeRole(role) {
+  return String(role || "USER").toUpperCase();
+}
+
+function canViewInventory(role) {
+  return ["ADMIN", "REHBER", "IZLEYICI", "AUDIT"].includes(
+    normalizeRole(role)
+  );
+}
+
+function canCreateInventory(role) {
+  return ["ADMIN", "REHBER"].includes(normalizeRole(role));
+}
+
+function canEditInventory(role) {
+  return ["ADMIN", "REHBER"].includes(normalizeRole(role));
+}
+
+function canDeleteInventory(role) {
+  return normalizeRole(role) === "ADMIN";
+}
+
+function canViewReports(role) {
+  return ["ADMIN", "REHBER", "IZLEYICI", "AUDIT"].includes(
+    normalizeRole(role)
+  );
+}
+
+function canManageQr(role) {
+  return ["ADMIN", "REHBER"].includes(normalizeRole(role));
+}
+
+function isAdmin(role) {
+  return normalizeRole(role) === ROLE_NAMES.ADMIN;
+}
+
+function isRehber(role) {
+  return normalizeRole(role) === ROLE_NAMES.REHBER;
+}
 
 function formatDate(value) {
   if (!value) return "-";
@@ -279,9 +328,453 @@ function getQrImageUrl(token, size = 260) {
   )}`;
 }
 
+function formatMoney(value, currency = "AZN") {
+  if (value === null || value === undefined || value === "") return "-";
+
+  const number = Number(value);
+
+  if (Number.isNaN(number)) {
+    return `${value} ${currency || ""}`.trim();
+  }
+
+  return `${number.toLocaleString("az-AZ", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} ${currency || "AZN"}`;
+}
+
+function getConditionLabel(value) {
+  return CONDITION_OPTIONS.find((x) => x.value === value)?.label || value || "-";
+}
+
+function getReportDateTime() {
+  return new Date().toLocaleString("az-AZ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function sanitizeSheetName(value) {
+  return String(value || "Sheet")
+    .replace(/[\\/?*[\]:]/g, " ")
+    .slice(0, 31);
+}
+
+function makeInventoryReportRows(list) {
+  return list.map((item, index) => ({
+    "№": index + 1,
+    "İnventar kodu": item.inventory_code || "-",
+    "İnventar adı": item.name || "-",
+    Brand: item.brand || "-",
+    Model: item.model || "-",
+    "Seriya nömrəsi": item.serial_number || "-",
+    Təsvir: item.description || "-",
+    Şirkət: item.company?.name || "-",
+    Departament: item.department?.name || "-",
+    Kateqoriya: item.category?.name || "-",
+    "Məsul şəxs": item.responsible?.full_name || "-",
+    "Məsul şəxsin emaili": item.responsible?.email || "-",
+    Status: getStatusLabel(item.status),
+    Vəziyyət: getConditionLabel(item.condition),
+    "Health status": getHealthLabel(item.computed_health_status),
+    "Health score": item.computed_health_score ?? "-",
+    "Cari yerləşmə": item.current_location || "-",
+    "Alış tarixi": formatDate(item.purchase_date),
+    "Alış qiyməti": formatMoney(item.purchase_price, item.currency),
+    Valyuta: item.currency || "-",
+    "Zəmanət başlanğıcı": formatDate(item.warranty_start_date),
+    "Zəmanət bitmə tarixi": formatDate(item.warranty_end_date),
+    "Zəmanət statusu": item.warranty_info?.label || "-",
+    "QR status": item.qr_token ? "QR hazırdır" : "QR yoxdur",
+    "Yaradılma tarixi": formatDate(item.created_at),
+  }));
+}
+
+function makeInventorySummaryRows(summary, sortedItems) {
+  const statusCounts = STATUS_OPTIONS.map((status) => ({
+    Bölmə: "Status",
+    Ad: status.label,
+    Say: sortedItems.filter((item) => item.status === status.value).length,
+  }));
+
+  const healthCounts = HEALTH_OPTIONS.map((health) => ({
+    Bölmə: "Health",
+    Ad: health.label,
+    Say: sortedItems.filter(
+      (item) => item.computed_health_status === health.value
+    ).length,
+  }));
+
+  return [
+    { Bölmə: "Ümumi", Ad: "Göstərilən inventar", Say: summary.shown },
+    { Bölmə: "Ümumi", Ad: "Bütün inventar", Say: summary.total },
+    { Bölmə: "Ümumi", Ad: "Təhkim olunub", Say: summary.assigned },
+    { Bölmə: "Ümumi", Ad: "Anbarda", Say: summary.inStock },
+    { Bölmə: "Ümumi", Ad: "Təmirdə", Say: summary.repair },
+    { Bölmə: "Ümumi", Ad: "Riskli health", Say: summary.risky },
+    { Bölmə: "Ümumi", Ad: "Zəmanəti bitən", Say: summary.expiredWarranty },
+    {},
+    ...statusCounts,
+    {},
+    ...healthCounts,
+  ];
+}
+
+function autoSizeWorksheetColumns(worksheet, rows) {
+  const keys = rows.reduce((acc, row) => {
+    Object.keys(row || {}).forEach((key) => acc.add(key));
+    return acc;
+  }, new Set());
+
+  worksheet["!cols"] = Array.from(keys).map((key) => {
+    const max = rows.reduce((width, row) => {
+      const value = row?.[key];
+      return Math.max(width, String(value ?? "").length);
+    }, String(key).length);
+
+    return { wch: Math.min(Math.max(max + 2, 12), 42) };
+  });
+}
+
+function buildInventoryPrintHtml({
+  rows,
+  summary,
+  companyAnalytics,
+  filtersText,
+  reportDate,
+}) {
+  const statusCards = STATUS_OPTIONS.map((status) => {
+    const count = rows.filter((item) => item.status === status.value).length;
+
+    return `
+      <div class="miniCard">
+        <span>${status.label}</span>
+        <strong>${count}</strong>
+      </div>
+    `;
+  }).join("");
+
+  const companyRows = companyAnalytics
+    .slice(0, 8)
+    .map(
+      (company) => `
+        <tr>
+          <td>${company.name}</td>
+          <td>${company.total}</td>
+          <td>${company.assigned}</td>
+          <td>${company.inStock}</td>
+          <td>${company.risky}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const tableRows = rows
+    .map(
+      (item, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>
+            <b>${item.inventory_code || "-"}</b>
+            <small>${item.name || "-"}</small>
+          </td>
+          <td>${item.company?.name || "-"}</td>
+          <td>${item.department?.name || "-"}</td>
+          <td>${item.category?.name || "-"}</td>
+          <td>${item.responsible?.full_name || "-"}</td>
+          <td>${getStatusLabel(item.status)}</td>
+          <td>
+            <b>${item.computed_health_score ?? "-"}</b>
+            <small>${getHealthLabel(item.computed_health_status)}</small>
+          </td>
+          <td>${item.warranty_info?.label || "-"}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Inventory Report</title>
+        <style>
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            padding: 28px;
+            font-family: Inter, Arial, sans-serif;
+            color: #0f172a;
+            background: #f8fafc;
+          }
+          .report {
+            max-width: 1180px;
+            margin: 0 auto;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 28px;
+            overflow: hidden;
+            box-shadow: 0 28px 80px rgba(15, 23, 42, 0.12);
+          }
+          .hero {
+            padding: 30px;
+            color: #ffffff;
+            background:
+              radial-gradient(circle at 90% 0%, rgba(34, 211, 238, 0.32), transparent 28%),
+              linear-gradient(135deg, #07111f, #0f172a 55%, #1d4ed8);
+            display: flex;
+            justify-content: space-between;
+            gap: 22px;
+            align-items: flex-start;
+          }
+          .hero span {
+            display: inline-flex;
+            margin-bottom: 10px;
+            color: #93c5fd;
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+          .hero h1 {
+            margin: 0;
+            font-size: 36px;
+            line-height: 1;
+            letter-spacing: -0.06em;
+          }
+          .hero p {
+            margin: 12px 0 0;
+            color: #cbd5e1;
+            font-size: 14px;
+            line-height: 1.6;
+            max-width: 680px;
+          }
+          .logo {
+            width: 64px;
+            height: 64px;
+            min-width: 64px;
+            border-radius: 22px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #2563eb, #06b6d4);
+            font-weight: 950;
+            font-size: 19px;
+            box-shadow: 0 20px 55px rgba(37, 99, 235, 0.35);
+          }
+          .meta {
+            padding: 18px 30px;
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #475569;
+            font-size: 13px;
+            font-weight: 800;
+          }
+          .cards {
+            padding: 22px 30px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+          }
+          .card,
+          .miniCard {
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 16px;
+            background: #ffffff;
+          }
+          .card span,
+          .miniCard span {
+            display: block;
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+          }
+          .card strong,
+          .miniCard strong {
+            display: block;
+            margin-top: 8px;
+            color: #0f172a;
+            font-size: 28px;
+            letter-spacing: -0.05em;
+          }
+          .section { padding: 0 30px 24px; }
+          .section h2 {
+            margin: 0 0 12px;
+            color: #0f172a;
+            font-size: 19px;
+            letter-spacing: -0.04em;
+          }
+          .miniGrid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+          }
+          .miniCard {
+            padding: 13px;
+            border-radius: 16px;
+            background: #f8fafc;
+          }
+          .miniCard strong { font-size: 22px; }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            overflow: hidden;
+            border-radius: 18px;
+          }
+          th {
+            background: #0f172a;
+            color: #ffffff;
+            text-align: left;
+            font-size: 11px;
+            padding: 12px;
+          }
+          td {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 11px 12px;
+            color: #334155;
+            font-size: 12px;
+            vertical-align: top;
+          }
+          td b {
+            display: block;
+            color: #0f172a;
+          }
+          td small {
+            display: block;
+            margin-top: 4px;
+            color: #64748b;
+            font-weight: 700;
+          }
+          .footer {
+            padding: 18px 30px 26px;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 700;
+          }
+          @media print {
+            body {
+              padding: 0;
+              background: #ffffff;
+            }
+            .report {
+              box-shadow: none;
+              border: 0;
+              border-radius: 0;
+            }
+            .hero,
+            .card,
+            .miniCard,
+            th {
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            @page {
+              size: A4 landscape;
+              margin: 10mm;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <main class="report">
+          <section class="hero">
+            <div>
+              <span>Cahan Holding Inventory</span>
+              <h1>İnventar hesabatı</h1>
+              <p>
+                Bu hesabat hazırda seçilmiş filterlərə uyğun inventarların
+                status, health score, zəmanət və şirkət bölgüsünü göstərir.
+              </p>
+            </div>
+            <div class="logo">CI</div>
+          </section>
+          <section class="meta">
+            <div>Hazırlanma tarixi: ${reportDate}</div>
+            <div>${filtersText}</div>
+          </section>
+          <section class="cards">
+            <div class="card"><span>Göstərilən</span><strong>${summary.shown}</strong></div>
+            <div class="card"><span>Ümumi</span><strong>${summary.total}</strong></div>
+            <div class="card"><span>Təhkim</span><strong>${summary.assigned}</strong></div>
+            <div class="card"><span>Riskli</span><strong>${summary.risky}</strong></div>
+            <div class="card"><span>Zəmanəti bitən</span><strong>${summary.expiredWarranty}</strong></div>
+          </section>
+          <section class="section">
+            <h2>Status bölgüsü</h2>
+            <div class="miniGrid">${statusCards}</div>
+          </section>
+          <section class="section">
+            <h2>Şirkət analizi</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Şirkət</th>
+                  <th>Ümumi</th>
+                  <th>Təhkim</th>
+                  <th>Anbarda</th>
+                  <th>Riskli</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  companyRows ||
+                  `<tr><td colspan="5">Şirkət analizi üçün məlumat yoxdur.</td></tr>`
+                }
+              </tbody>
+            </table>
+          </section>
+          <section class="section">
+            <h2>İnventar siyahısı</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>İnventar</th>
+                  <th>Şirkət</th>
+                  <th>Departament</th>
+                  <th>Kateqoriya</th>
+                  <th>Məsul şəxs</th>
+                  <th>Status</th>
+                  <th>Health</th>
+                  <th>Zəmanət</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  tableRows ||
+                  `<tr><td colspan="9">Hesabat üçün inventar yoxdur.</td></tr>`
+                }
+              </tbody>
+            </table>
+          </section>
+          <section class="footer">
+            © Cahan Holding · Inventory Management System
+          </section>
+        </main>
+        <script>
+          window.onload = function () {
+            window.focus();
+            window.print();
+          };
+        </script>
+      </body>
+    </html>
+  `;
+}
+
 export default function InventoryPageClient() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [me, setMe] = useState(null);
   const [items, setItems] = useState([]);
 
   const [search, setSearch] = useState("");
@@ -319,10 +812,19 @@ export default function InventoryPageClient() {
   const [optionCategories, setOptionCategories] = useState([]);
   const [optionProfiles, setOptionProfiles] = useState([]);
 
+  const currentRole = normalizeRole(me?.roles?.name || me?.role || "USER");
+  const currentCompanyId = me?.company_id || me?.companies?.id || "";
+
+  const allowViewInventory = canViewInventory(currentRole);
+  const allowCreateInventory = canCreateInventory(currentRole);
+  const allowEditInventory = canEditInventory(currentRole);
+  const allowDeleteInventory = canDeleteInventory(currentRole);
+  const allowReports = canViewReports(currentRole);
+  const allowQr = canManageQr(currentRole);
+
   useEffect(() => {
     setMounted(true);
-    loadItems();
-    loadOptions();
+    loadInitialData();
   }, []);
 
   useEffect(() => {
@@ -388,10 +890,68 @@ export default function InventoryPageClient() {
     return () => window.clearTimeout(timer);
   }, [deleteItem]);
 
-  async function loadItems() {
+  async function loadInitialData() {
     setLoading(true);
 
-    const { data, error } = await supabase
+    const profile = await loadMe();
+
+    await Promise.all([loadItems(profile), loadOptions(profile)]);
+
+    setLoading(false);
+  }
+
+  async function loadMe() {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setMe(null);
+      return null;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select(
+        `
+        id,
+        full_name,
+        email,
+        company_id,
+        status,
+        roles (
+          id,
+          name,
+          label
+        ),
+        companies (
+          id,
+          name
+        )
+      `
+      )
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("CURRENT PROFILE LOAD ERROR:", profileError);
+    }
+
+    setMe(profile || null);
+    return profile || null;
+  }
+
+  async function loadItems(profileArg = me) {
+    const role = normalizeRole(profileArg?.roles?.name || profileArg?.role || "USER");
+    const companyId = profileArg?.company_id || profileArg?.companies?.id || "";
+
+    if (!canViewInventory(role)) {
+      setItems([]);
+      return;
+    }
+
+    let query = supabase
       .from("inventory_items")
       .select(
         `
@@ -435,43 +995,62 @@ export default function InventoryPageClient() {
       )
       .order("created_at", { ascending: false });
 
+    if (isRehber(role) && companyId) {
+      query = query.eq("company_id", companyId);
+    }
+
+    const { data, error } = await query;
+
     if (error) {
       console.error("INVENTORY LOAD ERROR FULL:", JSON.stringify(error, null, 2));
       console.error("INVENTORY LOAD ERROR MESSAGE:", error.message);
       console.error("INVENTORY LOAD ERROR DETAILS:", error.details);
       console.error("INVENTORY LOAD ERROR HINT:", error.hint);
       setItems([]);
-      setLoading(false);
       return;
     }
 
     setItems((data || []).map(enrichItem));
-    setLoading(false);
   }
 
-  async function loadOptions() {
+  async function loadOptions(profileArg = me) {
+    const role = normalizeRole(profileArg?.roles?.name || profileArg?.role || "USER");
+    const companyId = profileArg?.company_id || profileArg?.companies?.id || "";
+
+    const companiesQuery = supabase
+      .from("companies")
+      .select("id,name,status")
+      .eq("status", "ACTIVE")
+      .order("name");
+
+    const departmentsQuery = supabase
+      .from("departments")
+      .select("id,name,company_id,status")
+      .eq("status", "ACTIVE")
+      .order("name");
+
+    const profilesQuery = supabase
+      .from("profiles")
+      .select("id,full_name,email,company_id,status")
+      .eq("status", "ACTIVE")
+      .order("full_name");
+
+    if (isRehber(role) && companyId) {
+      companiesQuery.eq("id", companyId);
+      departmentsQuery.eq("company_id", companyId);
+      profilesQuery.eq("company_id", companyId);
+    }
+
     const [companiesRes, departmentsRes, categoriesRes, profilesRes] =
       await Promise.all([
-        supabase
-          .from("companies")
-          .select("id,name,status")
-          .eq("status", "ACTIVE")
-          .order("name"),
-        supabase
-          .from("departments")
-          .select("id,name,company_id,status")
-          .eq("status", "ACTIVE")
-          .order("name"),
+        companiesQuery,
+        departmentsQuery,
         supabase
           .from("inventory_categories")
           .select("id,name,status")
           .eq("status", "ACTIVE")
           .order("name"),
-        supabase
-          .from("profiles")
-          .select("id,full_name,email,company_id,status")
-          .eq("status", "ACTIVE")
-          .order("full_name"),
+        profilesQuery,
       ]);
 
     if (companiesRes.error) console.error("companies error", companiesRes.error);
@@ -791,6 +1370,11 @@ export default function InventoryPageClient() {
   }
 
   function openCreateModal() {
+    if (!allowCreateInventory) {
+      alert("Bu əməliyyat üçün icazəniz yoxdur.");
+      return;
+    }
+
     setCreateOpen(true);
   }
 
@@ -815,6 +1399,11 @@ export default function InventoryPageClient() {
   }
 
   function openEditModal(item) {
+    if (!allowEditInventory) {
+      alert("Bu əməliyyat üçün icazəniz yoxdur.");
+      return;
+    }
+
     setEditItem(item);
   }
 
@@ -839,6 +1428,11 @@ export default function InventoryPageClient() {
   }
 
   function openDeleteModal(item) {
+    if (!allowDeleteInventory) {
+      alert("Bu əməliyyat üçün icazəniz yoxdur.");
+      return;
+    }
+
     setDeleteItem(item);
   }
 
@@ -861,6 +1455,11 @@ export default function InventoryPageClient() {
   }
 
   async function handleDeleteConfirm() {
+    if (!allowDeleteInventory) {
+      alert("Bu əməliyyat üçün icazəniz yoxdur.");
+      return;
+    }
+
     if (!deleteItem?.id) return;
 
     setDeleting(true);
@@ -882,17 +1481,17 @@ export default function InventoryPageClient() {
     setViewItem(null);
     setEditItem(null);
     setQrItem(null);
-    await loadItems();
+    await loadItems(me);
   }
 
   async function handleEditSaved() {
-    await loadItems();
+    await loadItems(me);
     closeViewModal();
     closeEditModal();
   }
 
   async function handleCreated() {
-    await loadItems();
+    await loadItems(me);
     closeCreateModal();
   }
 
@@ -901,6 +1500,11 @@ export default function InventoryPageClient() {
 
     if (item.qr_token) {
       openQrModal(item);
+      return;
+    }
+
+    if (!allowQr) {
+      alert("QR yaratmaq üçün icazəniz yoxdur.");
       return;
     }
 
@@ -971,6 +1575,149 @@ export default function InventoryPageClient() {
     setQrGeneratingId(null);
   }
 
+  function getActiveFiltersText() {
+    const parts = [];
+
+    if (search.trim()) parts.push(`Axtarış: "${search.trim()}"`);
+
+    if (selectedStatuses.length) {
+      parts.push(
+        `Status: ${selectedStatuses.map((x) => getStatusLabel(x)).join(", ")}`
+      );
+    }
+
+    if (selectedHealths.length) {
+      parts.push(
+        `Health: ${selectedHealths.map((x) => getHealthLabel(x)).join(", ")}`
+      );
+    }
+
+    if (selectedCompanies.length) {
+      const names = companyOptions
+        .filter((x) => selectedCompanies.includes(String(x.id)))
+        .map((x) => x.name);
+
+      parts.push(`Şirkət: ${names.join(", ")}`);
+    }
+
+    if (selectedCategories.length) {
+      const names = categoryOptions
+        .filter((x) => selectedCategories.includes(String(x.id)))
+        .map((x) => x.name);
+
+      parts.push(`Kateqoriya: ${names.join(", ")}`);
+    }
+
+    if (createdFrom || createdTo) {
+      parts.push(
+        `Tarix: ${formatInputDate(createdFrom) || "..."} - ${
+          formatInputDate(createdTo) || "..."
+        }`
+      );
+    }
+
+    return parts.length ? parts.join(" · ") : "Filter yoxdur";
+  }
+
+  function exportInventoryExcel() {
+    if (!allowReports) {
+      alert("Report üçün icazəniz yoxdur.");
+      return;
+    }
+
+    const reportRows = makeInventoryReportRows(sortedItems);
+    const summaryRows = makeInventorySummaryRows(summary, sortedItems);
+
+    const companyRows = companyAnalytics.map((company) => ({
+      Şirkət: company.name,
+      Ümumi: company.total,
+      "Təhkim olunub": company.assigned,
+      Anbarda: company.inStock,
+      "Riskli health": company.risky,
+      Departamentlər: company.departments
+        .map((dept) => `${dept.name}: ${dept.total}`)
+        .join("; "),
+      Kateqoriyalar: company.categories
+        .map((category) => `${category.name}: ${category.total}`)
+        .join("; "),
+    }));
+
+    const workbook = XLSX.utils.book_new();
+
+    const metaRows = [
+      ["Cahan Holding Inventory Report"],
+      ["Hazırlanma tarixi", getReportDateTime()],
+      ["Filterlər", getActiveFiltersText()],
+      ["Göstərilən inventar", summary.shown],
+      ["Bütün inventar", summary.total],
+    ];
+
+    const metaSheet = XLSX.utils.aoa_to_sheet(metaRows);
+    metaSheet["!cols"] = [{ wch: 28 }, { wch: 70 }];
+    XLSX.utils.book_append_sheet(workbook, metaSheet, "Report info");
+
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+    autoSizeWorksheetColumns(summarySheet, summaryRows);
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
+    const companySheet = XLSX.utils.json_to_sheet(companyRows);
+    autoSizeWorksheetColumns(companySheet, companyRows);
+    XLSX.utils.book_append_sheet(workbook, companySheet, "Company analysis");
+
+    const dataSheet = XLSX.utils.json_to_sheet(reportRows);
+    autoSizeWorksheetColumns(dataSheet, reportRows);
+    XLSX.utils.book_append_sheet(
+      workbook,
+      dataSheet,
+      sanitizeSheetName("Inventory full")
+    );
+
+    const date = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `inventory-report-${date}.xlsx`);
+  }
+
+  function printInventoryReport() {
+    if (!allowReports) {
+      alert("Print üçün icazəniz yoxdur.");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "width=1400,height=900");
+
+    if (!printWindow) {
+      alert("Print pəncərəsi bloklandı. Brauzer popup icazəsini yoxla.");
+      return;
+    }
+
+    const html = buildInventoryPrintHtml({
+      rows: sortedItems,
+      summary,
+      companyAnalytics,
+      filtersText: getActiveFiltersText(),
+      reportDate: getReportDateTime(),
+    });
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  }
+
+  if (!loading && !allowViewInventory) {
+    return (
+      <div className="inventory-page">
+        <section className="inventory-hero inventory-hero-modern">
+          <div>
+            <h1>İcazə yoxdur</h1>
+            <p>
+              Bu səhifəyə baxmaq üçün rol icazəniz yoxdur. İnventar idarəetməsi
+              yalnız ADMIN, REHBER, IZLEYICI və AUDIT rolları üçündür.
+            </p>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="inventory-page">
       <section className="inventory-hero inventory-hero-modern">
@@ -982,13 +1729,39 @@ export default function InventoryPageClient() {
           </p>
         </div>
 
-        <button
-          type="button"
-          className="inventory-primary-btn"
-          onClick={openCreateModal}
-        >
-          + Yeni inventar
-        </button>
+        <div className="inventory-hero-actions">
+          {allowReports && (
+            <>
+              <button
+                type="button"
+                className="inventory-report-btn excel"
+                onClick={exportInventoryExcel}
+                disabled={loading || sortedItems.length === 0}
+              >
+                Excel report
+              </button>
+
+              <button
+                type="button"
+                className="inventory-report-btn print"
+                onClick={printInventoryReport}
+                disabled={loading || sortedItems.length === 0}
+              >
+                Print report
+              </button>
+            </>
+          )}
+
+          {allowCreateInventory && (
+            <button
+              type="button"
+              className="inventory-primary-btn"
+              onClick={openCreateModal}
+            >
+              + Yeni inventar
+            </button>
+          )}
+        </div>
       </section>
 
       <section className="inventory-top-grid">
@@ -1010,7 +1783,7 @@ export default function InventoryPageClient() {
               onChange={(e) => setSearch(e.target.value)}
             />
 
-            <button type="button" onClick={loadItems}>
+            <button type="button" onClick={() => loadItems(me)}>
               Yenilə
             </button>
           </div>
@@ -1453,7 +2226,15 @@ export default function InventoryPageClient() {
                             item.qr_token ? "ready" : ""
                           }`}
                           onClick={() => handleQrClick(item)}
-                          disabled={qrGeneratingId === item.id}
+                          disabled={
+                            qrGeneratingId === item.id ||
+                            (!allowQr && !item.qr_token)
+                          }
+                          title={
+                            !allowQr && !item.qr_token
+                              ? "QR yaratmaq üçün icazə yoxdur"
+                              : undefined
+                          }
                         >
                           {qrGeneratingId === item.id
                             ? "Yaradılır..."
@@ -1550,7 +2331,15 @@ export default function InventoryPageClient() {
                         item.qr_token ? "ready" : ""
                       }`}
                       onClick={() => handleQrClick(item)}
-                      disabled={qrGeneratingId === item.id}
+                      disabled={
+                        qrGeneratingId === item.id ||
+                        (!allowQr && !item.qr_token)
+                      }
+                      title={
+                        !allowQr && !item.qr_token
+                          ? "QR yaratmaq üçün icazə yoxdur"
+                          : undefined
+                      }
                     >
                       {qrGeneratingId === item.id
                         ? "Yaradılır..."
@@ -1619,6 +2408,9 @@ export default function InventoryPageClient() {
         visible={viewVisible}
         item={viewItem}
         qrGeneratingId={qrGeneratingId}
+        canEdit={allowEditInventory}
+        canDelete={allowDeleteInventory}
+        canQr={allowQr}
         onClose={closeViewModal}
         onEdit={handleEditFromView}
         onDelete={handleAskDelete}
@@ -1633,6 +2425,9 @@ export default function InventoryPageClient() {
         departments={optionDepartments}
         categories={optionCategories}
         profiles={optionProfiles}
+        canEdit={allowEditInventory}
+        role={currentRole}
+        currentCompanyId={currentCompanyId}
         onClose={closeEditModal}
         onSaved={handleEditSaved}
       />
@@ -1672,6 +2467,9 @@ function InventoryViewModal({
   visible,
   item,
   qrGeneratingId,
+  canEdit,
+  canDelete,
+  canQr,
   onClose,
   onEdit,
   onDelete,
@@ -1772,7 +2570,12 @@ function InventoryViewModal({
                 type="button"
                 className={`inventory-qr-btn ${item.qr_token ? "ready" : ""}`}
                 onClick={() => onQr?.(item)}
-                disabled={qrGeneratingId === item.id}
+                disabled={qrGeneratingId === item.id || (!canQr && !item.qr_token)}
+                title={
+                  !canQr && !item.qr_token
+                    ? "QR yaratmaq üçün icazə yoxdur"
+                    : undefined
+                }
               >
                 {qrGeneratingId === item.id
                   ? "Yaradılır..."
@@ -1790,22 +2593,28 @@ function InventoryViewModal({
         </div>
 
         <footer className="inventory-view-footer">
-          <button
-            type="button"
-            className="inventory-danger-btn"
-            onClick={() => onDelete?.(item)}
-          >
-            Sil
-          </button>
-
-          <div>
+          {canDelete ? (
             <button
               type="button"
-              className="inventory-secondary-action-btn"
-              onClick={() => onEdit?.(item)}
+              className="inventory-danger-btn"
+              onClick={() => onDelete?.(item)}
             >
-              Düzəlt
+              Sil
             </button>
+          ) : (
+            <span />
+          )}
+
+          <div>
+            {canEdit && (
+              <button
+                type="button"
+                className="inventory-secondary-action-btn"
+                onClick={() => onEdit?.(item)}
+              >
+                Düzəlt
+              </button>
+            )}
 
             <button type="button" onClick={onClose}>
               Bağla
@@ -1826,6 +2635,9 @@ function InventoryEditModal({
   departments,
   categories,
   profiles,
+  canEdit,
+  role,
+  currentCompanyId,
   onClose,
   onSaved,
 }) {
@@ -1895,6 +2707,11 @@ function InventoryEditModal({
   async function handleSubmit(e) {
     e.preventDefault();
 
+    if (!canEdit) {
+      setError("Bu əməliyyat üçün icazəniz yoxdur.");
+      return;
+    }
+
     if (!item?.id || !form) return;
 
     setSaving(true);
@@ -1908,6 +2725,12 @@ function InventoryEditModal({
 
     if (!form.name.trim()) {
       setError("İnventar adı məcburidir.");
+      setSaving(false);
+      return;
+    }
+
+    if (isRehber(role) && currentCompanyId && form.company_id !== currentCompanyId) {
+      setError("REHBER yalnız öz şirkətinə aid inventarı düzəldə bilər.");
       setSaving(false);
       return;
     }
@@ -2023,6 +2846,7 @@ function InventoryEditModal({
                 value={form.inventory_code}
                 onChange={(e) => setField("inventory_code", e.target.value)}
                 required
+                disabled={!canEdit || saving}
               />
             </EditField>
 
@@ -2031,6 +2855,7 @@ function InventoryEditModal({
                 value={form.name}
                 onChange={(e) => setField("name", e.target.value)}
                 required
+                disabled={!canEdit || saving}
               />
             </EditField>
 
@@ -2038,6 +2863,7 @@ function InventoryEditModal({
               <input
                 value={form.brand}
                 onChange={(e) => setField("brand", e.target.value)}
+                disabled={!canEdit || saving}
               />
             </EditField>
 
@@ -2045,6 +2871,7 @@ function InventoryEditModal({
               <input
                 value={form.model}
                 onChange={(e) => setField("model", e.target.value)}
+                disabled={!canEdit || saving}
               />
             </EditField>
 
@@ -2052,6 +2879,7 @@ function InventoryEditModal({
               <input
                 value={form.serial_number}
                 onChange={(e) => setField("serial_number", e.target.value)}
+                disabled={!canEdit || saving}
               />
             </EditField>
 
@@ -2060,6 +2888,7 @@ function InventoryEditModal({
                 value={form.description}
                 onChange={(e) => setField("description", e.target.value)}
                 rows={3}
+                disabled={!canEdit || saving}
               />
             </EditField>
           </EditSection>
@@ -2069,6 +2898,11 @@ function InventoryEditModal({
               <select
                 value={form.company_id}
                 onChange={(e) => setField("company_id", e.target.value)}
+                disabled={
+                  !canEdit ||
+                  saving ||
+                  (isRehber(role) && Boolean(currentCompanyId))
+                }
               >
                 <option value="">Seçilməyib</option>
                 {companies.map((x) => (
@@ -2083,6 +2917,7 @@ function InventoryEditModal({
               <select
                 value={form.department_id}
                 onChange={(e) => setField("department_id", e.target.value)}
+                disabled={!canEdit || saving || !form.company_id}
               >
                 <option value="">Seçilməyib</option>
                 {filteredDepartments.map((x) => (
@@ -2097,6 +2932,7 @@ function InventoryEditModal({
               <select
                 value={form.category_id}
                 onChange={(e) => setField("category_id", e.target.value)}
+                disabled={!canEdit || saving}
               >
                 <option value="">Seçilməyib</option>
                 {categories.map((x) => (
@@ -2113,6 +2949,7 @@ function InventoryEditModal({
                 onChange={(e) =>
                   setField("responsible_user_id", e.target.value)
                 }
+                disabled={!canEdit || saving || !form.company_id}
               >
                 <option value="">Təhkim edilməyib</option>
                 {filteredProfiles.map((x) => (
@@ -2127,6 +2964,7 @@ function InventoryEditModal({
               <input
                 value={form.current_location}
                 onChange={(e) => setField("current_location", e.target.value)}
+                disabled={!canEdit || saving}
               />
             </EditField>
           </EditSection>
@@ -2136,7 +2974,7 @@ function InventoryEditModal({
               <select
                 value={form.status}
                 onChange={(e) => setField("status", e.target.value)}
-                disabled={Boolean(form.responsible_user_id)}
+                disabled={!canEdit || saving || Boolean(form.responsible_user_id)}
               >
                 {ITEM_STATUS_OPTIONS.map((x) => (
                   <option key={x.value} value={x.value}>
@@ -2150,6 +2988,7 @@ function InventoryEditModal({
               <select
                 value={form.condition}
                 onChange={(e) => setField("condition", e.target.value)}
+                disabled={!canEdit || saving}
               >
                 {CONDITION_OPTIONS.map((x) => (
                   <option key={x.value} value={x.value}>
@@ -2164,6 +3003,7 @@ function InventoryEditModal({
                 type="date"
                 value={form.purchase_date}
                 onChange={(e) => setField("purchase_date", e.target.value)}
+                disabled={!canEdit || saving}
               />
             </EditField>
 
@@ -2174,6 +3014,7 @@ function InventoryEditModal({
                 step="0.01"
                 value={form.purchase_price}
                 onChange={(e) => setField("purchase_price", e.target.value)}
+                disabled={!canEdit || saving}
               />
             </EditField>
 
@@ -2181,6 +3022,7 @@ function InventoryEditModal({
               <select
                 value={form.currency}
                 onChange={(e) => setField("currency", e.target.value)}
+                disabled={!canEdit || saving}
               >
                 <option value="AZN">AZN</option>
                 <option value="USD">USD</option>
@@ -2196,6 +3038,7 @@ function InventoryEditModal({
                 onChange={(e) =>
                   setField("warranty_start_date", e.target.value)
                 }
+                disabled={!canEdit || saving}
               />
             </EditField>
 
@@ -2204,6 +3047,7 @@ function InventoryEditModal({
                 type="date"
                 value={form.warranty_end_date}
                 onChange={(e) => setField("warranty_end_date", e.target.value)}
+                disabled={!canEdit || saving}
               />
             </EditField>
           </EditSection>
@@ -2214,7 +3058,7 @@ function InventoryEditModal({
             Bağla
           </button>
 
-          <button type="submit" className="primary" disabled={saving}>
+          <button type="submit" className="primary" disabled={!canEdit || saving}>
             {saving ? "Yadda saxlanılır..." : "Yadda saxla"}
           </button>
         </footer>
@@ -2250,7 +3094,6 @@ function InventoryQrModal({ mounted, visible, item, onClose }) {
               font-family: Arial, sans-serif;
               color: #0f172a;
             }
-
             .label {
               width: 320px;
               border: 2px solid #0f172a;
@@ -2258,25 +3101,21 @@ function InventoryQrModal({ mounted, visible, item, onClose }) {
               padding: 18px;
               text-align: center;
             }
-
             h1 {
               margin: 0 0 6px;
               font-size: 22px;
             }
-
             p {
               margin: 4px 0;
               font-size: 13px;
               color: #475569;
             }
-
             img {
               width: 220px;
               height: 220px;
               margin: 14px auto;
               display: block;
             }
-
             .code {
               margin-top: 10px;
               padding: 8px 10px;
@@ -2285,12 +3124,8 @@ function InventoryQrModal({ mounted, visible, item, onClose }) {
               font-weight: 800;
               font-size: 13px;
             }
-
             @media print {
-              body {
-                padding: 0;
-              }
-
+              body { padding: 0; }
               .label {
                 border-radius: 0;
                 border: 1px solid #000;

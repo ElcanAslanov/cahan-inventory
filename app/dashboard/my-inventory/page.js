@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabaseClient";
 import "@/styles/my-inventory.css";
 
@@ -220,6 +221,476 @@ function uniqRows(rows) {
   });
 
   return Array.from(map.values());
+}
+
+function getReportDateTime() {
+  return new Date().toLocaleString("az-AZ", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function sanitizeSheetName(value) {
+  return String(value || "Sheet")
+    .replace(/[\\/?*[\]:]/g, " ")
+    .slice(0, 31);
+}
+
+function autoSizeWorksheetColumns(worksheet, rows) {
+  const keys = rows.reduce((acc, row) => {
+    Object.keys(row || {}).forEach((key) => acc.add(key));
+    return acc;
+  }, new Set());
+
+  worksheet["!cols"] = Array.from(keys).map((key) => {
+    const max = rows.reduce((width, row) => {
+      const value = row?.[key];
+      return Math.max(width, String(value ?? "").length);
+    }, String(key).length);
+
+    return { wch: Math.min(Math.max(max + 2, 12), 42) };
+  });
+}
+
+function makeMyInventoryReportRows(list) {
+  return list.map((row, index) => ({
+    "№": index + 1,
+    "İnventar adı": getAssetName(row),
+    "İnventar kodu": getAssetCode(row),
+    Serial: getSerialNumber(row),
+    Kateqoriya: getCategoryName(row),
+    Şirkət: getCompanyName(row),
+    Departament: getDepartmentName(row),
+    Status: statusLabel(getAssetStatus(row)),
+    "Təhkim tarixi": formatDate(getAssignedDate(row)),
+    Qiymət: formatMoney(getAssetPrice(row)),
+    Qeyd: getAssetNote(row),
+  }));
+}
+
+function makeMyInventorySummaryRows(summary, sortedItems, categoryAnalytics) {
+  const statusMap = new Map();
+
+  sortedItems.forEach((row) => {
+    const label = statusLabel(getAssetStatus(row));
+    statusMap.set(label, (statusMap.get(label) || 0) + 1);
+  });
+
+  const statusRows = Array.from(statusMap.entries()).map(([name, count]) => ({
+    Bölmə: "Status",
+    Ad: name,
+    Say: count,
+  }));
+
+  const categoryRows = categoryAnalytics.map((category) => ({
+    Bölmə: "Kateqoriya",
+    Ad: category.name,
+    Say: category.total,
+  }));
+
+  return [
+    { Bölmə: "Ümumi", Ad: "Göstərilən inventar", Say: summary.shown },
+    { Bölmə: "Ümumi", Ad: "Mənə təhkim olunan", Say: summary.total },
+    { Bölmə: "Ümumi", Ad: "Təhkim olunub", Say: summary.assigned },
+    { Bölmə: "Ümumi", Ad: "İstifadədə", Say: summary.inUse },
+    { Bölmə: "Ümumi", Ad: "Təmirdə", Say: summary.repair },
+    { Bölmə: "Ümumi", Ad: "Kateqoriya sayı", Say: summary.categories.length },
+    {},
+    ...statusRows,
+    {},
+    ...categoryRows,
+  ];
+}
+
+function buildMyInventoryPrintHtml({
+  rows,
+  summary,
+  categoryAnalytics,
+  filtersText,
+  reportDate,
+  userName,
+}) {
+  const statusMap = new Map();
+
+  rows.forEach((row) => {
+    const label = statusLabel(getAssetStatus(row));
+    statusMap.set(label, (statusMap.get(label) || 0) + 1);
+  });
+
+  const statusCards = Array.from(statusMap.entries())
+    .map(
+      ([label, count]) => `
+        <div class="miniCard">
+          <span>${label}</span>
+          <strong>${count}</strong>
+        </div>
+      `
+    )
+    .join("");
+
+  const categoryRows = categoryAnalytics
+    .slice(0, 8)
+    .map(
+      (category) => `
+        <tr>
+          <td>${category.name}</td>
+          <td>${category.total}</td>
+          <td>${category.assigned}</td>
+          <td>${category.inUse}</td>
+          <td>${category.repair}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const tableRows = rows
+    .map(
+      (row, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>
+            <b>${getAssetName(row)}</b>
+            <small>${getAssetCode(row)}</small>
+          </td>
+          <td>${getSerialNumber(row)}</td>
+          <td>${getCategoryName(row)}</td>
+          <td>${getCompanyName(row)}</td>
+          <td>${getDepartmentName(row)}</td>
+          <td>${statusLabel(getAssetStatus(row))}</td>
+          <td>${formatDate(getAssignedDate(row))}</td>
+          <td>${formatMoney(getAssetPrice(row))}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>My Inventory Report</title>
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            padding: 28px;
+            font-family: Inter, Arial, sans-serif;
+            color: #0f172a;
+            background: #f8fafc;
+          }
+
+          .report {
+            max-width: 1180px;
+            margin: 0 auto;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 28px;
+            overflow: hidden;
+            box-shadow: 0 28px 80px rgba(15, 23, 42, 0.12);
+          }
+
+          .hero {
+            padding: 30px;
+            color: #ffffff;
+            background:
+              radial-gradient(circle at 90% 0%, rgba(14, 165, 233, 0.36), transparent 28%),
+              linear-gradient(135deg, #07111f, #0f172a 55%, #0284c7);
+            display: flex;
+            justify-content: space-between;
+            gap: 22px;
+            align-items: flex-start;
+          }
+
+          .hero span {
+            display: inline-flex;
+            margin-bottom: 10px;
+            color: #7dd3fc;
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+          }
+
+          .hero h1 {
+            margin: 0;
+            font-size: 36px;
+            line-height: 1;
+            letter-spacing: -0.06em;
+          }
+
+          .hero p {
+            margin: 12px 0 0;
+            color: #cbd5e1;
+            font-size: 14px;
+            line-height: 1.6;
+            max-width: 700px;
+          }
+
+          .logo {
+            width: 64px;
+            height: 64px;
+            min-width: 64px;
+            border-radius: 22px;
+            display: grid;
+            place-items: center;
+            background: linear-gradient(135deg, #0284c7, #7dd3fc);
+            font-weight: 950;
+            font-size: 19px;
+            box-shadow: 0 20px 55px rgba(2, 132, 199, 0.35);
+          }
+
+          .meta {
+            padding: 18px 30px;
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+            color: #475569;
+            font-size: 13px;
+            font-weight: 800;
+          }
+
+          .cards {
+            padding: 22px 30px;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+          }
+
+          .card,
+          .miniCard {
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 16px;
+            background: #ffffff;
+          }
+
+          .card span,
+          .miniCard span {
+            display: block;
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+          }
+
+          .card strong,
+          .miniCard strong {
+            display: block;
+            margin-top: 8px;
+            color: #0f172a;
+            font-size: 28px;
+            letter-spacing: -0.05em;
+          }
+
+          .section {
+            padding: 0 30px 24px;
+          }
+
+          .section h2 {
+            margin: 0 0 12px;
+            color: #0f172a;
+            font-size: 19px;
+            letter-spacing: -0.04em;
+          }
+
+          .miniGrid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+          }
+
+          .miniCard {
+            padding: 13px;
+            border-radius: 16px;
+            background: #f8fafc;
+          }
+
+          .miniCard strong {
+            font-size: 22px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            overflow: hidden;
+            border-radius: 18px;
+          }
+
+          th {
+            background: #0f172a;
+            color: #ffffff;
+            text-align: left;
+            font-size: 11px;
+            padding: 12px;
+          }
+
+          td {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 11px 12px;
+            color: #334155;
+            font-size: 12px;
+            vertical-align: top;
+          }
+
+          td b {
+            display: block;
+            color: #0f172a;
+          }
+
+          td small {
+            display: block;
+            margin-top: 4px;
+            color: #64748b;
+            font-weight: 700;
+          }
+
+          .footer {
+            padding: 18px 30px 26px;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 700;
+          }
+
+          @media print {
+            body {
+              padding: 0;
+              background: #ffffff;
+            }
+
+            .report {
+              box-shadow: none;
+              border: 0;
+              border-radius: 0;
+            }
+
+            .hero,
+            .card,
+            .miniCard,
+            th {
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+
+            @page {
+              size: A4 landscape;
+              margin: 10mm;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <main class="report">
+          <section class="hero">
+            <div>
+              <span>Cahan Holding Inventory</span>
+              <h1>Mənim inventar hesabatım</h1>
+              <p>
+                Bu hesabat istifadəçiyə təhkim olunmuş inventarların status,
+                kateqoriya, şirkət və departament bölgüsünü göstərir.
+              </p>
+            </div>
+
+            <div class="logo">CI</div>
+          </section>
+
+          <section class="meta">
+            <div>İstifadəçi: ${userName || "-"}</div>
+            <div>Hazırlanma tarixi: ${reportDate}</div>
+          </section>
+
+          <section class="meta">
+            <div>${filtersText}</div>
+          </section>
+
+          <section class="cards">
+            <div class="card"><span>Göstərilən</span><strong>${summary.shown}</strong></div>
+            <div class="card"><span>Mənə təhkim</span><strong>${summary.total}</strong></div>
+            <div class="card"><span>Təhkim</span><strong>${summary.assigned}</strong></div>
+            <div class="card"><span>İstifadədə</span><strong>${summary.inUse}</strong></div>
+            <div class="card"><span>Kateqoriya</span><strong>${summary.categories.length}</strong></div>
+          </section>
+
+          <section class="section">
+            <h2>Status bölgüsü</h2>
+            <div class="miniGrid">
+              ${
+                statusCards ||
+                `<div class="miniCard"><span>Status</span><strong>0</strong></div>`
+              }
+            </div>
+          </section>
+
+          <section class="section">
+            <h2>Kateqoriya analizi</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Kateqoriya</th>
+                  <th>Ümumi</th>
+                  <th>Təhkim</th>
+                  <th>İstifadədə</th>
+                  <th>Təmirdə</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  categoryRows ||
+                  `<tr><td colspan="5">Kateqoriya analizi üçün məlumat yoxdur.</td></tr>`
+                }
+              </tbody>
+            </table>
+          </section>
+
+          <section class="section">
+            <h2>İnventar siyahısı</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>İnventar</th>
+                  <th>Serial</th>
+                  <th>Kateqoriya</th>
+                  <th>Şirkət</th>
+                  <th>Departament</th>
+                  <th>Status</th>
+                  <th>Təhkim tarixi</th>
+                  <th>Qiymət</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  tableRows ||
+                  `<tr><td colspan="9">Hesabat üçün inventar yoxdur.</td></tr>`
+                }
+              </tbody>
+            </table>
+          </section>
+
+          <section class="footer">
+            © Cahan Holding · My Inventory Report
+          </section>
+        </main>
+
+        <script>
+          window.onload = function () {
+            window.focus();
+            window.print();
+          };
+        </script>
+      </body>
+    </html>
+  `;
 }
 
 export default function MyInventoryPage() {
@@ -726,6 +1197,116 @@ export default function MyInventoryPage() {
     }, 220);
   }
 
+    function getActiveFiltersText() {
+    const parts = [];
+
+    if (search.trim()) parts.push(`Axtarış: "${search.trim()}"`);
+
+    if (selectedStatuses.length) {
+      parts.push(
+        `Status: ${selectedStatuses.map((x) => statusLabel(x)).join(", ")}`
+      );
+    }
+
+    if (selectedCategories.length) {
+      parts.push(`Kateqoriya: ${selectedCategories.join(", ")}`);
+    }
+
+    if (selectedCompanies.length) {
+      parts.push(`Şirkət: ${selectedCompanies.join(", ")}`);
+    }
+
+    if (selectedDepartments.length) {
+      parts.push(`Departament: ${selectedDepartments.join(", ")}`);
+    }
+
+    if (assignedFrom || assignedTo) {
+      parts.push(
+        `Təhkim tarixi: ${formatInputDate(assignedFrom) || "..."} - ${
+          formatInputDate(assignedTo) || "..."
+        }`
+      );
+    }
+
+    return parts.length ? parts.join(" · ") : "Filter yoxdur";
+  }
+
+  function exportMyInventoryExcel() {
+    const reportRows = makeMyInventoryReportRows(sortedItems);
+    const summaryRows = makeMyInventorySummaryRows(
+      summary,
+      sortedItems,
+      categoryAnalytics
+    );
+
+    const categoryRows = categoryAnalytics.map((category) => ({
+      Kateqoriya: category.name,
+      Ümumi: category.total,
+      "Təhkim olunub": category.assigned,
+      İstifadədə: category.inUse,
+      Təmirdə: category.repair,
+      Şirkətlər: category.companies
+        .map((company) => `${company.name}: ${company.total}`)
+        .join("; "),
+    }));
+
+    const workbook = XLSX.utils.book_new();
+
+    const metaRows = [
+      ["Cahan Holding My Inventory Report"],
+      ["İstifadəçi", profile?.full_name || me?.email || "-"],
+      ["Hazırlanma tarixi", getReportDateTime()],
+      ["Filterlər", getActiveFiltersText()],
+      ["Göstərilən inventar", summary.shown],
+      ["Mənə təhkim olunan", summary.total],
+    ];
+
+    const metaSheet = XLSX.utils.aoa_to_sheet(metaRows);
+    metaSheet["!cols"] = [{ wch: 30 }, { wch: 75 }];
+    XLSX.utils.book_append_sheet(workbook, metaSheet, "Report info");
+
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows);
+    autoSizeWorksheetColumns(summarySheet, summaryRows);
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
+    const categorySheet = XLSX.utils.json_to_sheet(categoryRows);
+    autoSizeWorksheetColumns(categorySheet, categoryRows);
+    XLSX.utils.book_append_sheet(workbook, categorySheet, "Category analysis");
+
+    const dataSheet = XLSX.utils.json_to_sheet(reportRows);
+    autoSizeWorksheetColumns(dataSheet, reportRows);
+    XLSX.utils.book_append_sheet(
+      workbook,
+      dataSheet,
+      sanitizeSheetName("My inventory")
+    );
+
+    const date = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(workbook, `my-inventory-report-${date}.xlsx`);
+  }
+
+  function printMyInventoryReport() {
+    const printWindow = window.open("", "_blank", "width=1400,height=900");
+
+    if (!printWindow) {
+      alert("Print pəncərəsi bloklandı. Brauzer popup icazəsini yoxla.");
+      return;
+    }
+
+    const html = buildMyInventoryPrintHtml({
+      rows: sortedItems,
+      summary,
+      categoryAnalytics,
+      filtersText: getActiveFiltersText(),
+      reportDate: getReportDateTime(),
+      userName: profile?.full_name || me?.email || "-",
+    });
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  }
+
   return (
     <section className="settings-page">
       <div className="settings-hero my-inventory-hero-modern">
@@ -735,14 +1316,33 @@ export default function MyInventoryPage() {
             Sizə təhkim olunmuş inventarları, statusları və detalları izləyin.
           </p>
         </div>
+        <div className="my-inventory-hero-actions">
+          <button
+            type="button"
+            className="my-inventory-report-btn excel"
+            onClick={exportMyInventoryExcel}
+            disabled={loading || sortedItems.length === 0}
+          >
+            Excel report
+          </button>
 
-        <button
-          type="button"
-          className="settings-primary-btn"
-          onClick={loadMyInventory}
-        >
-          Yenilə
-        </button>
+          <button
+            type="button"
+            className="my-inventory-report-btn print"
+            onClick={printMyInventoryReport}
+            disabled={loading || sortedItems.length === 0}
+          >
+            Print report
+          </button>
+
+          <button
+            type="button"
+            className="settings-primary-btn"
+            onClick={loadMyInventory}
+          >
+            Yenilə
+          </button>
+        </div>
       </div>
 
       <section className="my-inventory-top-grid">
