@@ -58,6 +58,11 @@ function warrantyLabel(item) {
   return "Aktiv";
 }
 
+function formatMoney(price, currency) {
+  if (price === null || price === undefined || price === "") return "-";
+  return `${price} ${currency || "AZN"}`;
+}
+
 function createServerSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =
@@ -76,11 +81,52 @@ function createServerSupabase() {
   });
 }
 
+async function getNameById(supabase, table, id) {
+  if (!id) return null;
+
+  const { data, error } = await supabase
+    .from(table)
+    .select("id, name")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) return null;
+
+  return data?.name || null;
+}
+
+async function getResponsibleName(supabase, id) {
+  if (!id) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, email")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) return null;
+
+  return data?.full_name || data?.email || null;
+}
+
 export default async function InventoryQrPublicPage({ params }) {
-  const token = decodeURIComponent(params.token || "");
+  const resolvedParams = await params;
+  const token = decodeURIComponent(resolvedParams?.token || "").trim();
 
   let item = null;
   let errorText = "";
+
+  if (!token) {
+    return (
+      <main className="qr-public-page">
+        <section className="qr-public-error">
+          <div>?</div>
+          <h1>QR token tapılmadı</h1>
+          <p>Link düzgün deyil.</p>
+        </section>
+      </main>
+    );
+  }
 
   try {
     const supabase = createServerSupabase();
@@ -105,23 +151,13 @@ export default async function InventoryQrPublicPage({ params }) {
         warranty_end_date,
         qr_token,
         current_location,
-        created_at,
-        company:companies!inventory_items_company_id_fkey (
-          id,
-          name
-        ),
-        department:departments!inventory_items_department_id_fkey (
-          id,
-          name
-        ),
-        category:inventory_categories!inventory_items_category_id_fkey (
-          id,
-          name
-        ),
-        responsible:profiles!inventory_items_responsible_user_id_fkey (
-          id,
-          full_name
-        )
+        company_id,
+        department_id,
+        category_id,
+        responsible_user_id,
+        health_score,
+        health_status,
+        created_at
       `
       )
       .eq("qr_token", token)
@@ -131,6 +167,21 @@ export default async function InventoryQrPublicPage({ params }) {
       errorText = error.message || "İnventar məlumatı oxunarkən xəta baş verdi.";
     } else {
       item = data;
+    }
+
+    if (item) {
+      const [companyName, departmentName, categoryName, responsibleName] =
+        await Promise.all([
+          getNameById(supabase, "companies", item.company_id),
+          getNameById(supabase, "departments", item.department_id),
+          getNameById(supabase, "inventory_categories", item.category_id),
+          getResponsibleName(supabase, item.responsible_user_id),
+        ]);
+
+      item.company_name = companyName;
+      item.department_name = departmentName;
+      item.category_name = categoryName;
+      item.responsible_name = responsibleName;
     }
   } catch (error) {
     errorText = error?.message || "Sistem xətası baş verdi.";
@@ -143,6 +194,7 @@ export default async function InventoryQrPublicPage({ params }) {
           <div>!</div>
           <h1>Xəta baş verdi</h1>
           <p>{errorText}</p>
+          <small>Token: {token}</small>
         </section>
       </main>
     );
@@ -157,6 +209,7 @@ export default async function InventoryQrPublicPage({ params }) {
           <p>
             Bu QR kod sistemdə aktiv inventara bağlı deyil və ya link yanlışdır.
           </p>
+          <small>Token: {token}</small>
         </section>
       </main>
     );
@@ -199,7 +252,7 @@ export default async function InventoryQrPublicPage({ params }) {
             <InfoRow label="Brand" value={item.brand} />
             <InfoRow label="Model" value={item.model} />
             <InfoRow label="Seriya nömrəsi" value={item.serial_number} />
-            <InfoRow label="Kateqoriya" value={item.category?.name} />
+            <InfoRow label="Kateqoriya" value={item.category_name} />
             <InfoRow label="Təsvir" value={item.description} full />
           </div>
         </div>
@@ -208,9 +261,9 @@ export default async function InventoryQrPublicPage({ params }) {
           <h2>Təhkim və yerləşmə</h2>
 
           <div className="qr-public-grid">
-            <InfoRow label="Şirkət" value={item.company?.name} />
-            <InfoRow label="Departament" value={item.department?.name} />
-            <InfoRow label="Məsul şəxs" value={item.responsible?.full_name} />
+            <InfoRow label="Şirkət" value={item.company_name} />
+            <InfoRow label="Departament" value={item.department_name} />
+            <InfoRow label="Məsul şəxs" value={item.responsible_name} />
             <InfoRow label="Cari yerləşmə" value={item.current_location} />
           </div>
         </div>
@@ -222,11 +275,7 @@ export default async function InventoryQrPublicPage({ params }) {
             <InfoRow label="Alış tarixi" value={formatDate(item.purchase_date)} />
             <InfoRow
               label="Alış qiyməti"
-              value={
-                item.purchase_price
-                  ? `${item.purchase_price} ${item.currency || "AZN"}`
-                  : "-"
-              }
+              value={formatMoney(item.purchase_price, item.currency)}
             />
             <InfoRow
               label="Zəmanət başlanğıcı"
