@@ -1,6 +1,6 @@
 "use client";
 
-import LogoutButton from "@/app/dashboard/LogoutButton";
+import LogoutButton from "../../app/dashboard/LogoutButton";
 
 export default function Topbar({ me, onMenuClick }) {
   return (

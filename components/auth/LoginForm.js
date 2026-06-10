@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [email, setEmail] = useState("admin@example.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -64,14 +64,14 @@ export default function LoginForm() {
 
             <div>
               <p>Cahan Holding</p>
-              <h1>Cahan Inventory</h1>
+              <h1>Cahan İnventar</h1>
             </div>
           </div>
 
           <div className="auth-hero auth-animate auth-delay-2">
             <div className="auth-pill">
               <span className="auth-live-dot" />
-              Inventory Control System
+              İnventar İdarəetmə Sistemi
             </div>
 
             <h2>
@@ -87,7 +87,7 @@ export default function LoginForm() {
           <div className="auth-floating-stack auth-animate auth-delay-3">
             <div className="auth-float-card auth-float-main">
               <div className="auth-float-top">
-                <span>Asset Overview</span>
+                <span>Ümumi Baxış</span>
                 <strong>98%</strong>
               </div>
 
@@ -117,14 +117,14 @@ export default function LoginForm() {
             <div className="auth-float-card auth-float-small">
               <span className="auth-scan-icon">⌁</span>
               <div>
-                <strong>Serial tracking</strong>
+                <strong>Ciddi izləmə</strong>
                 <p>Model, kod və sənədlər</p>
               </div>
             </div>
 
             <div className="auth-float-card auth-float-tiny">
               <strong>+24</strong>
-              <span>new assets</span>
+              <span>Yeni imkanlar</span>
             </div>
           </div>
         </div>
@@ -132,9 +132,9 @@ export default function LoginForm() {
         <div className="auth-form-zone">
           <form onSubmit={handleLogin} className="auth-card auth-animate auth-delay-4">
             <div className="auth-card-header">
-              <span className="auth-card-kicker">Secure access</span>
-              <h3>Daxil ol</h3>
-              <p>İdarəetmə panelinə keçmək üçün hesab məlumatlarını yaz.</p>
+              
+              <h3>Xoş gəlmişsiniz!</h3>
+              
             </div>
 
             {urlError === "inactive" && (
@@ -147,7 +147,7 @@ export default function LoginForm() {
               <span>Email</span>
               <input
                 type="email"
-                placeholder="email@example.com"
+                placeholder="email@cahan.az"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
