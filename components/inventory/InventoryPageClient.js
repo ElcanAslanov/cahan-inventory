@@ -285,6 +285,7 @@ function enrichItem(item) {
 
   return {
     ...item,
+    images: Array.isArray(item?.images) ? item.images : [],
     computed_health_score:
       item.health_score === null || item.health_score === undefined
         ? fallback.score
@@ -363,6 +364,10 @@ function sanitizeSheetName(value) {
     .slice(0, 31);
 }
 
+function getImageCount(item) {
+  return Array.isArray(item?.images) ? item.images.length : 0;
+}
+
 function makeInventoryReportRows(list) {
   return list.map((item, index) => ({
     "№": index + 1,
@@ -388,6 +393,7 @@ function makeInventoryReportRows(list) {
     "Zəmanət başlanğıcı": formatDate(item.warranty_start_date),
     "Zəmanət bitmə tarixi": formatDate(item.warranty_end_date),
     "Zəmanət statusu": item.warranty_info?.label || "-",
+    "Şəkil sayı": getImageCount(item),
     "QR status": item.qr_token ? "QR hazırdır" : "QR yoxdur",
     "Yaradılma tarixi": formatDate(item.created_at),
   }));
@@ -943,7 +949,9 @@ export default function InventoryPageClient() {
   }
 
   async function loadItems(profileArg = me) {
-    const role = normalizeRole(profileArg?.roles?.name || profileArg?.role || "USER");
+    const role = normalizeRole(
+      profileArg?.roles?.name || profileArg?.role || "USER"
+    );
     const companyId = profileArg?.company_id || profileArg?.companies?.id || "";
 
     if (!canViewInventory(role)) {
@@ -970,6 +978,7 @@ export default function InventoryPageClient() {
         warranty_start_date,
         warranty_end_date,
         qr_token,
+        images,
         health_score,
         health_status,
         current_location,
@@ -1014,7 +1023,9 @@ export default function InventoryPageClient() {
   }
 
   async function loadOptions(profileArg = me) {
-    const role = normalizeRole(profileArg?.roles?.name || profileArg?.role || "USER");
+    const role = normalizeRole(
+      profileArg?.roles?.name || profileArg?.role || "USER"
+    );
     const companyId = profileArg?.company_id || profileArg?.companies?.id || "";
 
     const companiesQuery = supabase
@@ -1206,6 +1217,11 @@ export default function InventoryPageClient() {
         bValue = b.warranty_end_date || "";
       }
 
+      if (sortBy === "images") {
+        aValue = getImageCount(a);
+        bValue = getImageCount(b);
+      }
+
       return compareValues(aValue, bValue, sortDir);
     });
 
@@ -1239,9 +1255,15 @@ export default function InventoryPageClient() {
       repair,
       risky,
       expiredWarranty,
-      assignedPercent: items.length ? Math.round((assigned / items.length) * 100) : 0,
-      inStockPercent: items.length ? Math.round((inStock / items.length) * 100) : 0,
-      riskyPercent: items.length ? Math.round((risky / items.length) * 100) : 0,
+      assignedPercent: items.length
+        ? Math.round((assigned / items.length) * 100)
+        : 0,
+      inStockPercent: items.length
+        ? Math.round((inStock / items.length) * 100)
+        : 0,
+      riskyPercent: items.length
+        ? Math.round((risky / items.length) * 100)
+        : 0,
     };
   }, [items, filteredItems]);
 
@@ -1464,6 +1486,20 @@ export default function InventoryPageClient() {
 
     setDeleting(true);
 
+    const imagePaths = Array.isArray(deleteItem.images)
+      ? deleteItem.images.map((image) => image?.path).filter(Boolean)
+      : [];
+
+    if (imagePaths.length > 0) {
+      const { error: storageError } = await supabase.storage
+        .from("inventory-images")
+        .remove(imagePaths);
+
+      if (storageError) {
+        console.error("INVENTORY IMAGE DELETE ERROR:", storageError);
+      }
+    }
+
     const { error } = await supabase
       .from("inventory_items")
       .delete()
@@ -1535,6 +1571,7 @@ export default function InventoryPageClient() {
         warranty_start_date,
         warranty_end_date,
         qr_token,
+        images,
         health_score,
         health_status,
         current_location,
@@ -2171,6 +2208,12 @@ export default function InventoryPageClient() {
                       </button>
                     </th>
 
+                    <th>
+                      <button type="button" onClick={() => toggleSort("images")}>
+                        Şəkil <span>{sortIcon("images")}</span>
+                      </button>
+                    </th>
+
                     <th>QR</th>
                     <th>Əməliyyatlar</th>
                   </tr>
@@ -2217,6 +2260,12 @@ export default function InventoryPageClient() {
                           <strong>{item.warranty_info?.label || "-"}</strong>
                           <span>{formatDate(item.warranty_end_date)}</span>
                         </div>
+                      </td>
+
+                      <td>
+                        <span className="inventory-image-count">
+                          {getImageCount(item)}
+                        </span>
                       </td>
 
                       <td>
@@ -2303,6 +2352,11 @@ export default function InventoryPageClient() {
                     <div>
                       <span>Zəmanət</span>
                       <strong>{item.warranty_info?.label || "-"}</strong>
+                    </div>
+
+                    <div>
+                      <span>Şəkil</span>
+                      <strong>{getImageCount(item)}</strong>
                     </div>
 
                     <div>
@@ -2447,6 +2501,65 @@ export default function InventoryPageClient() {
         onClose={closeDeleteModal}
         onConfirm={handleDeleteConfirm}
       />
+
+      <style jsx global>{`
+        .inventory-image-count {
+          min-width: 34px;
+          height: 30px;
+          border-radius: 999px;
+          display: inline-grid;
+          place-items: center;
+          padding: 0 10px;
+          background: #eff6ff;
+          color: #1d4ed8;
+          font-size: 13px;
+          font-weight: 950;
+        }
+
+        .inventory-image-empty {
+          border: 1px dashed #cbd5e1;
+          border-radius: 18px;
+          background: #f8fafc;
+          color: #64748b;
+          padding: 14px;
+          font-size: 13px;
+          font-weight: 800;
+        }
+
+        .inventory-image-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+          gap: 12px;
+        }
+
+        .inventory-image-card {
+          display: block;
+          overflow: hidden;
+          border: 1px solid #e2e8f0;
+          border-radius: 18px;
+          background: #ffffff;
+          color: inherit;
+          text-decoration: none;
+          box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+        }
+
+        .inventory-image-card img {
+          width: 100%;
+          height: 118px;
+          object-fit: cover;
+          display: block;
+          background: #f1f5f9;
+        }
+
+        .inventory-image-card span {
+          display: block;
+          padding: 9px 10px;
+          color: #334155;
+          font-size: 12px;
+          font-weight: 800;
+          word-break: break-word;
+        }
+      `}</style>
     </div>
   );
 }
@@ -2459,6 +2572,89 @@ function SmoothModalShell({ mounted, open, visible, children }) {
       {children}
     </div>,
     document.body
+  );
+}
+
+function InventoryImageGallery({ images }) {
+  const [signedImages, setSignedImages] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadSignedUrls() {
+      const list = Array.isArray(images) ? images : [];
+
+      if (list.length === 0) {
+        setSignedImages([]);
+        return;
+      }
+
+      setLoading(true);
+
+      const result = [];
+
+      for (const image of list) {
+        if (!image?.path) continue;
+
+        const { data, error } = await supabase.storage
+          .from("inventory-images")
+          .createSignedUrl(image.path, 60 * 10);
+
+        if (!error && data?.signedUrl) {
+          result.push({
+            ...image,
+            signedUrl: data.signedUrl,
+          });
+        }
+      }
+
+      if (alive) {
+        setSignedImages(result);
+        setLoading(false);
+      }
+    }
+
+    loadSignedUrls();
+
+    return () => {
+      alive = false;
+    };
+  }, [images]);
+
+  if (loading) {
+    return (
+      <DetailCard title="Şəkillər">
+        <div className="inventory-image-empty">Şəkillər yüklənir...</div>
+      </DetailCard>
+    );
+  }
+
+  if (!signedImages.length) {
+    return (
+      <DetailCard title="Şəkillər">
+        <div className="inventory-image-empty">Şəkil əlavə edilməyib.</div>
+      </DetailCard>
+    );
+  }
+
+  return (
+    <DetailCard title="Şəkillər">
+      <div className="inventory-image-grid">
+        {signedImages.map((image, index) => (
+          <a
+            key={`${image.path}-${index}`}
+            href={image.signedUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inventory-image-card"
+          >
+            <img src={image.signedUrl} alt={image.name || "İnventar şəkli"} />
+            <span>{image.name || `Şəkil ${index + 1}`}</span>
+          </a>
+        ))}
+      </div>
+    </DetailCard>
   );
 }
 
@@ -2547,6 +2743,8 @@ function InventoryViewModal({
               />
               <DetailRow label="Zəmanət statusu" value={warranty.label} />
             </DetailCard>
+
+            <InventoryImageGallery images={item.images} />
           </div>
 
           <aside className="inventory-view-side">
@@ -2561,6 +2759,11 @@ function InventoryViewModal({
                 score={item.computed_health_score}
                 status={item.computed_health_status}
               />
+            </div>
+
+            <div className="inventory-view-status-card">
+              <span>Şəkillər</span>
+              <strong>{getImageCount(item)} ədəd</strong>
             </div>
 
             <div className="inventory-view-status-card">
@@ -3271,6 +3474,13 @@ function InventoryDeleteConfirmModal({
           <strong>{item.name || "-"}</strong> inventarını silmək üzrəsən. Bu
           əməliyyat geri qaytarılmaya bilər.
         </p>
+
+        {getImageCount(item) > 0 && (
+          <p>
+            Bu inventara bağlı <strong>{getImageCount(item)} şəkil</strong> də
+            storage-dən silinməyə çalışılacaq.
+          </p>
+        )}
 
         <div className="inventory-delete-code">{item.inventory_code || "-"}</div>
 

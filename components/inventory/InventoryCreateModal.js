@@ -25,6 +25,7 @@ const STEPS = [
   { key: "basic", label: "Əsas" },
   { key: "owner", label: "Təhkim" },
   { key: "finance", label: "Maliyyə" },
+  { key: "images", label: "Şəkillər" },
 ];
 
 const INITIAL_FORM = {
@@ -67,6 +68,25 @@ function isRehber(role) {
   return normalizeRole(role) === "REHBER";
 }
 
+function formatFileSize(size) {
+  if (!size) return "-";
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function createSafeFileName(fileName) {
+  const original = String(fileName || "image.jpg");
+  const ext = original.includes(".") ? original.split(".").pop() : "jpg";
+  const random =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return `${Date.now()}-${random}.${ext}`
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9._-]/g, "");
+}
+
 export default function InventoryCreateModal({ open, onClose, onCreated }) {
   const [mounted, setMounted] = useState(false);
   const [activeStep, setActiveStep] = useState("basic");
@@ -80,6 +100,9 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
   const [categories, setCategories] = useState([]);
   const [profiles, setProfiles] = useState([]);
   const [me, setMe] = useState(null);
+
+  const [imageFiles, setImageFiles] = useState([]);
+  const [imagePreviews, setImagePreviews] = useState([]);
 
   const currentRole = normalizeRole(me?.roles?.name || me?.role || "USER");
   const currentCompanyId = me?.company_id || me?.companies?.id || "";
@@ -98,6 +121,14 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
     setActiveStep("basic");
     setForm(INITIAL_FORM);
     setError("");
+    setImageFiles([]);
+    setImagePreviews((prev) => {
+      prev.forEach((image) => {
+        if (image?.url) URL.revokeObjectURL(image.url);
+      });
+      return [];
+    });
+
     loadOptions();
 
     function handleKeyDown(e) {
@@ -123,6 +154,14 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [open, onClose]);
+
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach((image) => {
+        if (image?.url) URL.revokeObjectURL(image.url);
+      });
+    };
+  }, [imagePreviews]);
 
   async function loadOptions() {
     setOptionsLoading(true);
@@ -277,7 +316,6 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
   }, [profiles, form.company_id]);
 
   const selectedCompany = companies.find((x) => x.id === form.company_id);
-  const selectedCategory = categories.find((x) => x.id === form.category_id);
   const selectedResponsible = profiles.find(
     (x) => x.id === form.responsible_user_id
   );
@@ -303,6 +341,90 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
 
   function toDateOrNull(value) {
     return value || null;
+  }
+
+  function handleImageSelect(e) {
+    const files = Array.from(e.target.files || []);
+
+    if (!files.length) return;
+
+    const acceptedFiles = [];
+    const previews = [];
+
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) {
+        setError(`${file.name} şəkil faylı deyil.`);
+        continue;
+      }
+
+      if (file.size > 8 * 1024 * 1024) {
+        setError(`${file.name} 8MB-dan böyükdür.`);
+        continue;
+      }
+
+      acceptedFiles.push(file);
+      previews.push({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        url: URL.createObjectURL(file),
+      });
+    }
+
+    if (acceptedFiles.length) {
+      setError("");
+      setImageFiles((prev) => [...prev, ...acceptedFiles]);
+      setImagePreviews((prev) => [...prev, ...previews]);
+    }
+
+    e.target.value = "";
+  }
+
+  function removeSelectedImage(index) {
+    setImageFiles((prev) => prev.filter((_, i) => i !== index));
+
+    setImagePreviews((prev) => {
+      const selected = prev[index];
+
+      if (selected?.url) {
+        URL.revokeObjectURL(selected.url);
+      }
+
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  async function uploadInventoryImages(inventoryId) {
+    if (!inventoryId || imageFiles.length === 0) return [];
+
+    const uploaded = [];
+
+    for (const file of imageFiles) {
+      const fileName = createSafeFileName(file.name);
+      const path = `${inventoryId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("inventory-images")
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      uploaded.push({
+        path,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        uploaded_at: new Date().toISOString(),
+      });
+    }
+
+    return uploaded;
   }
 
   function validateCurrentStep() {
@@ -339,11 +461,21 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
 
     if (activeStep === "owner") {
       setActiveStep("finance");
+      return;
+    }
+
+    if (activeStep === "finance") {
+      setActiveStep("images");
     }
   }
 
   function goBack() {
     setError("");
+
+    if (activeStep === "images") {
+      setActiveStep("finance");
+      return;
+    }
 
     if (activeStep === "finance") {
       setActiveStep("owner");
@@ -420,6 +552,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       useful_life_months: toNumberOrNull(form.useful_life_months),
 
       note: form.note.trim() || null,
+      images: [],
     };
 
     const { data, error: insertError } = await supabase
@@ -433,6 +566,42 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       setError(insertError.message || "İnventar əlavə edilərkən xəta baş verdi.");
       setSaving(false);
       return;
+    }
+
+    let uploadedImages = [];
+
+    try {
+      uploadedImages = await uploadInventoryImages(data.id);
+    } catch (uploadError) {
+      console.error("INVENTORY IMAGE UPLOAD ERROR:", uploadError);
+
+      await supabase.from("inventory_items").delete().eq("id", data.id);
+
+      setError(
+        uploadError.message ||
+          "Şəkillər yüklənərkən xəta baş verdi. İnventar yaradılmadı."
+      );
+      setSaving(false);
+      return;
+    }
+
+    if (uploadedImages.length > 0) {
+      const { error: imagesUpdateError } = await supabase
+        .from("inventory_items")
+        .update({
+          images: uploadedImages,
+        })
+        .eq("id", data.id);
+
+      if (imagesUpdateError) {
+        console.error("INVENTORY IMAGES UPDATE ERROR:", imagesUpdateError);
+        setError(
+          imagesUpdateError.message ||
+            "Şəkillər yükləndi, amma inventar məlumatına yazılmadı."
+        );
+        setSaving(false);
+        return;
+      }
     }
 
     if (payload.responsible_user_id && data?.id) {
@@ -485,7 +654,8 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
               <span>Smart Asset</span>
               <h2>Yeni inventar qeydiyyatı</h2>
               <p>
-                İnventarı mərhələlərlə əlavə et: əsas məlumat, təhkim və maliyyə.
+                İnventarı mərhələlərlə əlavə et: əsas məlumat, təhkim, maliyyə
+                və şəkillər.
               </p>
             </div>
 
@@ -525,8 +695,8 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
               </div>
 
               <div>
-                <span>Rol</span>
-                <strong>{me?.roles?.label || currentRole}</strong>
+                <span>Şəkil</span>
+                <strong>{imageFiles.length ? `${imageFiles.length} ədəd` : "Yoxdur"}</strong>
               </div>
             </div>
 
@@ -889,6 +1059,70 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                   </Field>
                 </FormGroup>
               )}
+
+              {activeStep === "images" && (
+                <FormGroup
+                  title="İnventar şəkilləri"
+                  subtitle="Şəkillər private Supabase Storage bucket-də saxlanacaq. Sonradan yalnız giriş etmiş istifadəçilər signed URL ilə görə biləcək."
+                >
+                  <Field label="Şəkil seç" full>
+                    <div className="assetImageUploadBox">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleImageSelect}
+                        disabled={!canCreate || saving}
+                      />
+
+                      <div>
+                        <strong>Şəkilləri seçin</strong>
+                        <span>
+                          JPG, PNG, WEBP və digər image formatları. Maksimum 8MB.
+                        </span>
+                      </div>
+                    </div>
+                  </Field>
+
+                  {imagePreviews.length > 0 ? (
+                    <Field label="Seçilmiş şəkillər" full>
+                      <div className="assetImagePreviewGrid">
+                        {imagePreviews.map((image, index) => (
+                          <div
+                            key={`${image.name}-${index}`}
+                            className="assetImagePreview"
+                          >
+                            <img src={image.url} alt={image.name} />
+
+                            <div>
+                              <strong>{image.name}</strong>
+                              <span>{formatFileSize(image.size)}</span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => removeSelectedImage(index)}
+                              disabled={saving}
+                            >
+                              Sil
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </Field>
+                  ) : (
+                    <Field label="Qeyd" full>
+                      <div className="assetInlineInfo">
+                        <strong>Şəkil əlavə edilməyib</strong>
+                        <span>
+                          Bu addımı boş keçə bilərsiniz. İnventar şəkilsiz də
+                          yaradılacaq.
+                        </span>
+                      </div>
+                    </Field>
+                  )}
+                </FormGroup>
+              )}
             </div>
 
             <footer className="assetFooter">
@@ -908,7 +1142,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                   </button>
                 )}
 
-                {activeStep !== "finance" ? (
+                {activeStep !== "images" ? (
                   <button
                     type="button"
                     className="assetNextBtn"
@@ -1234,7 +1468,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
         .assetStepTabs {
           flex: 0 0 auto;
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
+          grid-template-columns: repeat(4, 1fr);
           gap: 10px;
           padding: 0 24px 14px;
         }
@@ -1281,7 +1515,8 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
         .assetGhostBtn:disabled,
         .assetSoftBtn:disabled,
         .assetNextBtn:disabled,
-        .assetSaveBtn:disabled {
+        .assetSaveBtn:disabled,
+        .assetImagePreview button:disabled {
           opacity: 0.62;
           cursor: not-allowed;
         }
@@ -1461,6 +1696,97 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
           color: #64748b;
           font-size: 12px;
           font-weight: 700;
+        }
+
+        .assetImageUploadBox {
+          position: relative;
+          min-height: 126px;
+          border: 1px dashed #93c5fd;
+          border-radius: 22px;
+          background:
+            radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.09), transparent 28%),
+            #f8fafc;
+          display: grid;
+          place-items: center;
+          text-align: center;
+          padding: 18px;
+          overflow: hidden;
+        }
+
+        .assetImageUploadBox input {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          cursor: pointer;
+          width: 100%;
+          height: 100%;
+        }
+
+        .assetImageUploadBox strong {
+          display: block;
+          color: #0f172a;
+          font-size: 15px;
+          font-weight: 900;
+        }
+
+        .assetImageUploadBox span {
+          display: block;
+          margin-top: 6px;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .assetImagePreviewGrid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+          gap: 12px;
+        }
+
+        .assetImagePreview {
+          overflow: hidden;
+          border: 1px solid #e2e8f0;
+          border-radius: 18px;
+          background: #ffffff;
+          box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+        }
+
+        .assetImagePreview img {
+          width: 100%;
+          height: 112px;
+          object-fit: cover;
+          display: block;
+          background: #f1f5f9;
+        }
+
+        .assetImagePreview div {
+          padding: 10px;
+          display: grid;
+          gap: 3px;
+        }
+
+        .assetImagePreview strong {
+          color: #0f172a;
+          font-size: 12px;
+          font-weight: 900;
+          word-break: break-word;
+        }
+
+        .assetImagePreview span {
+          color: #64748b;
+          font-size: 11px;
+          font-weight: 700;
+        }
+
+        .assetImagePreview button {
+          width: 100%;
+          height: 34px;
+          border: 0;
+          border-top: 1px solid #fee2e2;
+          background: #fef2f2;
+          color: #991b1b;
+          cursor: pointer;
+          font-weight: 900;
         }
 
         .assetFooter {
@@ -1659,6 +1985,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
 
           .assetStepTabs {
             flex: 0 0 auto;
+            grid-template-columns: repeat(4, 1fr);
             padding: 0 12px 7px;
             gap: 6px;
           }
