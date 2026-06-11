@@ -13,60 +13,72 @@ const ROLES = {
 };
 
 const MENU = [
- {
-  group: "Əsas",
-  items: [
-    {
-      label: "Dashboard",
-      href: "/dashboard",
-      icon: "⌂",
-      roles: [
-        ROLES.ADMIN,
-        ROLES.REHBER,
-        ROLES.USER,
-        ROLES.IZLEYICI,
-        ROLES.VIEWER,
-        ROLES.AUDIT,
-      ],
-    },
-    {
-      label: "İnventarlar",
-      href: "/dashboard/inventory",
-      icon: "◈",
-      roles: [
-        ROLES.ADMIN,
-        ROLES.REHBER,
-        ROLES.IZLEYICI,
-        ROLES.VIEWER,
-        ROLES.AUDIT,
-      ],
-    },
-    {
-      label: "Yerdəyişmə",
-      href: "/dashboard/transfers",
-      icon: "⇄",
-      roles: [ROLES.ADMIN, ROLES.REHBER],
-    },
-    {
-      label: "Loglar",
-      href: "/dashboard/logs",
-      icon: "≣",
-      roles: [
-        ROLES.ADMIN,
-        ROLES.REHBER,
-        ROLES.IZLEYICI,
-        ROLES.VIEWER,
-        ROLES.AUDIT,
-      ],
-    },
-    {
-      label: "Mənim inventarlarım",
-      href: "/dashboard/my-inventory",
-      icon: "◎",
-      roles: [ROLES.ADMIN, ROLES.REHBER, ROLES.USER],
-    },
-  ],
-},
+  {
+    group: "Əsas",
+    items: [
+      {
+        label: "Dashboard",
+        href: "/dashboard",
+        icon: "⌂",
+        roles: [
+          ROLES.ADMIN,
+          ROLES.REHBER,
+          ROLES.USER,
+          ROLES.IZLEYICI,
+          ROLES.VIEWER,
+          ROLES.AUDIT,
+        ],
+        permission: "dashboard.view",
+      },
+      {
+        label: "İnventarlar",
+        href: "/dashboard/inventory",
+        icon: "◈",
+        roles: [
+          ROLES.ADMIN,
+          ROLES.REHBER,
+          ROLES.IZLEYICI,
+          ROLES.VIEWER,
+          ROLES.AUDIT,
+        ],
+        permission: "inventory.view",
+      },
+      {
+        label: "Yetkiləndirmə",
+        href: "/dashboard/permissions",
+        icon: "⚙",
+        roles: [ROLES.ADMIN],
+        permission: "permissions.view",
+      },
+      {
+        label: "Yerdəyişmə",
+        href: "/dashboard/transfers",
+        icon: "⇄",
+        roles: [ROLES.ADMIN, ROLES.REHBER],
+        permission: "transfers.view",
+      },
+      {
+        label: "Loglar",
+        href: "/dashboard/logs",
+        icon: "≣",
+        roles: [
+          ROLES.ADMIN,
+          ROLES.REHBER,
+          ROLES.IZLEYICI,
+          ROLES.VIEWER,
+          ROLES.AUDIT,
+        ],
+        permission: "logs.view",
+      },
+      {
+        label: "Mənim inventarlarım",
+        href: "/dashboard/my-inventory",
+        icon: "◎",
+        roles: [ROLES.ADMIN, ROLES.REHBER, ROLES.USER],
+        permission: "my_inventory.view",
+      },
+    ],
+  },
   {
     group: "Hesabat",
     items: [
@@ -75,6 +87,7 @@ const MENU = [
         href: "/dashboard/audit",
         icon: "◷",
         roles: [ROLES.ADMIN, ROLES.AUDIT],
+        permission: "audit.view",
       },
     ],
   },
@@ -86,24 +99,28 @@ const MENU = [
         href: "/dashboard/companies",
         icon: "◇",
         roles: [ROLES.ADMIN],
+        permission: "companies.view",
       },
       {
         label: "Departamentlər",
         href: "/dashboard/departments",
         icon: "▤",
         roles: [ROLES.ADMIN],
+        permission: "departments.view",
       },
       {
         label: "Kateqoriyalar",
         href: "/dashboard/categories",
         icon: "▦",
         roles: [ROLES.ADMIN, ROLES.REHBER],
+        permission: "categories.view",
       },
       {
         label: "İstifadəçilər",
         href: "/dashboard/users",
         icon: "◌",
         roles: [ROLES.ADMIN],
+        permission: "users.view",
       },
     ],
   },
@@ -153,6 +170,7 @@ function getCurrentRole(me, role) {
     role ||
       me?.resolved_role ||
       me?.user_role ||
+      me?.role ||
       me?.roles?.name ||
       ROLES.USER
   );
@@ -203,15 +221,55 @@ function getCompanyName(me) {
   return me?.companies?.name || me?.company_name || me?.company?.name || "-";
 }
 
+function getPermissionKeys(me) {
+  if (Array.isArray(me?.permissionKeys)) return me.permissionKeys;
+  if (Array.isArray(me?.permission_keys)) return me.permission_keys;
+  if (Array.isArray(me?.permissions)) return me.permissions;
+
+  return [];
+}
+
+function hasRoleAccess(item, currentRole) {
+  if (!Array.isArray(item.roles) || item.roles.length === 0) {
+    return true;
+  }
+
+  return item.roles.map(normalizeRole).includes(currentRole);
+}
+
+function hasPermissionAccess(item, permissionKeys, currentRole) {
+  if (!item.permission) {
+    return true;
+  }
+
+  if (currentRole === ROLES.ADMIN) {
+    return true;
+  }
+
+  if (!Array.isArray(permissionKeys) || permissionKeys.length === 0) {
+    return false;
+  }
+
+  return permissionKeys.includes(item.permission);
+}
+
+function canShowItem(item, currentRole, permissionKeys) {
+  const roleOk = hasRoleAccess(item, currentRole);
+  const permissionOk = hasPermissionAccess(item, permissionKeys, currentRole);
+
+  return roleOk && permissionOk;
+}
+
 export default function Sidebar({ me, role, open, onClose }) {
   const pathname = usePathname();
 
   const currentRole = getCurrentRole(me, role);
+  const permissionKeys = getPermissionKeys(me);
 
   const visibleGroups = MENU.map((group) => ({
     ...group,
     items: group.items.filter((item) =>
-      item.roles.map(normalizeRole).includes(currentRole)
+      canShowItem(item, currentRole, permissionKeys)
     ),
   })).filter((group) => group.items.length > 0);
 
@@ -262,7 +320,7 @@ export default function Sidebar({ me, role, open, onClose }) {
                       title={item.label}
                       aria-current={active ? "page" : undefined}
                     >
-                      <span className="dash-nav-icon">{item.icon}</span>
+                      <span className="dash-nav-icon">{item.icon || "•"}</span>
                       <span className="dash-nav-text">{item.label}</span>
                     </Link>
                   );

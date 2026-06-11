@@ -96,6 +96,31 @@ export default function DashboardShell({ children }) {
     };
   }, [sidebarOpen]);
 
+  async function loadMyPermissions(accessToken) {
+  try {
+    const res = await fetch("/api/me/permissions", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken || ""}`,
+      },
+      cache: "no-store",
+    });
+
+    const text = await res.text();
+    const json = text ? JSON.parse(text) : {};
+
+    if (!res.ok) {
+      console.warn("DASHBOARD PERMISSIONS WARNING:", json);
+      return [];
+    }
+
+    return Array.isArray(json.permissionKeys) ? json.permissionKeys : [];
+  } catch (err) {
+    console.warn("DASHBOARD PERMISSIONS LOAD ERROR:", err);
+    return [];
+  }
+}
+
   async function loadMe() {
     try {
       setLoading(true);
@@ -110,6 +135,12 @@ export default function DashboardShell({ children }) {
         window.location.href = "/login";
         return;
       }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token || "";
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
@@ -179,11 +210,15 @@ export default function DashboardShell({ children }) {
         });
       }
 
+      const permissionKeys = await loadMyPermissions(accessToken);
+
       const finalProfile = {
         ...profile,
         roles: roleRow,
         resolved_role: resolvedRole,
         resolved_role_label: roleRow?.label || getRoleLabel(resolvedRole),
+        permissionKeys,
+        permission_keys: permissionKeys,
       };
 
       console.log("DASHBOARD ME RESOLVED:", {
@@ -194,6 +229,7 @@ export default function DashboardShell({ children }) {
         resolved_role: finalProfile.resolved_role,
         resolved_role_label: finalProfile.resolved_role_label,
         roles: finalProfile.roles,
+        permissionKeys: finalProfile.permissionKeys,
       });
 
       setMe(finalProfile);

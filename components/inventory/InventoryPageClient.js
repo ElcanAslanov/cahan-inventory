@@ -846,6 +846,7 @@ export default function InventoryPageClient() {
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [createdFrom, setCreatedFrom] = useState("");
   const [createdTo, setCreatedTo] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [sortBy, setSortBy] = useState("created_at");
   const [sortDir, setSortDir] = useState("desc");
@@ -1485,6 +1486,55 @@ return finalProfile;
     setPage(1);
   }
 
+  function getActiveFilterCount() {
+    let count = 0;
+
+    if (search.trim()) count += 1;
+    if (selectedStatuses.length) count += 1;
+    if (selectedHealths.length) count += 1;
+    if (selectedCompanies.length) count += 1;
+    if (selectedCategories.length) count += 1;
+    if (createdFrom || createdTo) count += 1;
+
+    return count;
+  }
+
+  function getSelectedNames(options, selectedIds) {
+    return options
+      .filter((item) => selectedIds.includes(String(item.id)))
+      .map((item) => item.name);
+  }
+
+  function renderFilterSummary() {
+    const parts = [];
+
+    if (selectedStatuses.length) {
+      parts.push(`${selectedStatuses.length} status`);
+    }
+
+    if (selectedHealths.length) {
+      parts.push(`${selectedHealths.length} health`);
+    }
+
+    if (selectedCompanies.length) {
+      parts.push(`${selectedCompanies.length} şirkət`);
+    }
+
+    if (selectedCategories.length) {
+      parts.push(`${selectedCategories.length} kateqoriya`);
+    }
+
+    if (createdFrom || createdTo) {
+      parts.push("tarix aralığı");
+    }
+
+    if (!parts.length) {
+      return "Filter seçilməyib";
+    }
+
+    return parts.join(" · ");
+  }
+
   function openCreateModal() {
     if (!allowCreateInventory) {
       alert("Bu əməliyyat üçün icazəniz yoxdur.");
@@ -1896,142 +1946,228 @@ return finalProfile;
       </section>
 
       <section className="inventory-top-grid">
-        <section className="inventory-filter-card">
-          <div className="inventory-filter-head">
-            <div>
-              <h3>Axtarış və multi seçim</h3>
+        <section className="inventory-filter-card inventory-filter-card-minimal">
+          <div className="inventory-filter-minimal-top">
+            <div className="inventory-search-shell">
+              <span className="inventory-search-icon">⌕</span>
+
+              <input
+                placeholder="Kod, ad, model, seriya, şirkət, departament və məsul şəxs..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+
+              {search.trim() && (
+                <button
+                  type="button"
+                  className="inventory-search-clear"
+                  onClick={() => setSearch("")}
+                  aria-label="Axtarışı təmizlə"
+                >
+                  ×
+                </button>
+              )}
             </div>
 
-            <button type="button" onClick={resetFilters}>
-              Sıfırla
-            </button>
+            <div className="inventory-filter-actions">
+              <button
+                type="button"
+                className={`inventory-filter-toggle ${filtersOpen ? "active" : ""}`}
+                onClick={() => setFiltersOpen((prev) => !prev)}
+              >
+                <span>Filter aç/bağla</span>
+                {getActiveFilterCount() > 0 && <b>{getActiveFilterCount()}</b>}
+              </button>
+
+              <button
+                type="button"
+                className="inventory-soft-btn"
+                onClick={() => loadItems(me)}
+              >
+                Yenilə
+              </button>
+
+              <button
+                type="button"
+                className="inventory-ghost-btn"
+                onClick={resetFilters}
+                disabled={getActiveFilterCount() === 0}
+              >
+                Sıfırla
+              </button>
+            </div>
           </div>
 
-          <div className="inventory-filter-row">
-            <input
-              placeholder="Kod, ad, model, seriya, şirkət, departament və məsul şəxs üzrə axtar..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-
-            <button type="button" onClick={() => loadItems(me)}>
-              Yenilə
-            </button>
+          <div className="inventory-filter-summary-line">
+            <span>{summary.shown} nəticə</span>
+            <em>{renderFilterSummary()}</em>
           </div>
 
-          <div className="inventory-date-filter-row">
-            <label>
-              <span>Yaradılma tarixi - Başlanğıc</span>
-
-              <div className="inventory-date-box">
-                <input
-                  type="date"
-                  value={createdFrom}
-                  onChange={(e) => setCreatedFrom(e.target.value)}
-                />
-                <strong>{formatInputDate(createdFrom) || "gg.aa.iiii"}</strong>
-              </div>
-            </label>
-
-            <label>
-              <span>Yaradılma tarixi - Son</span>
-
-              <div className="inventory-date-box">
-                <input
-                  type="date"
-                  value={createdTo}
-                  onChange={(e) => setCreatedTo(e.target.value)}
-                />
-                <strong>{formatInputDate(createdTo) || "gg.aa.iiii"}</strong>
-              </div>
-            </label>
-          </div>
-
-          <div className="inventory-filter-section-title">Statuslar</div>
-
-          <div className="inventory-chip-row">
-            {STATUS_OPTIONS.map((item) => {
-              const selected = selectedStatuses.includes(item.value);
-
-              return (
-                <button
-                  key={item.value}
-                  type="button"
-                  className={`inventory-filter-chip ${selected ? "active" : ""}`}
-                  onClick={() =>
-                    toggleMultiValue(setSelectedStatuses, item.value)
+          {filtersOpen && (
+            <div className="inventory-filter-panel">
+              <div className="inventory-filter-panel-grid">
+                <MinimalFilterBlock
+                  title="Status"
+                  subtitle={
+                    selectedStatuses.length
+                      ? selectedStatuses.map((x) => getStatusLabel(x)).join(", ")
+                      : "Hamısı"
                   }
                 >
-                  <span>{selected ? "✓" : "+"}</span>
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
+                  <div className="inventory-compact-chip-row">
+                    {STATUS_OPTIONS.map((item) => {
+                      const selected = selectedStatuses.includes(item.value);
 
-          <div className="inventory-filter-section-title">Health score</div>
+                      return (
+                        <button
+                          key={item.value}
+                          type="button"
+                          className={`inventory-compact-chip ${selected ? "active" : ""}`}
+                          onClick={() =>
+                            toggleMultiValue(setSelectedStatuses, item.value)
+                          }
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </MinimalFilterBlock>
 
-          <div className="inventory-chip-row">
-            {HEALTH_OPTIONS.map((item) => {
-              const selected = selectedHealths.includes(item.value);
-
-              return (
-                <button
-                  key={item.value}
-                  type="button"
-                  className={`inventory-filter-chip ${selected ? "active" : ""}`}
-                  onClick={() =>
-                    toggleMultiValue(setSelectedHealths, item.value)
+                <MinimalFilterBlock
+                  title="Health"
+                  subtitle={
+                    selectedHealths.length
+                      ? selectedHealths.map((x) => getHealthLabel(x)).join(", ")
+                      : "Hamısı"
                   }
                 >
-                  <span>{selected ? "✓" : "+"}</span>
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
+                  <div className="inventory-compact-chip-row">
+                    {HEALTH_OPTIONS.map((item) => {
+                      const selected = selectedHealths.includes(item.value);
 
-          <div className="inventory-filter-section-title">Şirkətlər</div>
+                      return (
+                        <button
+                          key={item.value}
+                          type="button"
+                          className={`inventory-compact-chip ${selected ? "active" : ""}`}
+                          onClick={() =>
+                            toggleMultiValue(setSelectedHealths, item.value)
+                          }
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </MinimalFilterBlock>
 
-          <div className="inventory-chip-row inventory-option-chip-row">
-            {companyOptions.map((item) => {
-              const id = String(item.id);
-              const selected = selectedCompanies.includes(id);
-
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`inventory-filter-chip ${selected ? "active" : ""}`}
-                  onClick={() => toggleMultiValue(setSelectedCompanies, id)}
+                <MinimalFilterBlock
+                  title="Şirkət"
+                  subtitle={
+                    selectedCompanies.length
+                      ? getSelectedNames(companyOptions, selectedCompanies).join(", ")
+                      : "Hamısı"
+                  }
                 >
-                  <span>{selected ? "✓" : "+"}</span>
-                  {item.name}
-                </button>
-              );
-            })}
-          </div>
+                  <div className="inventory-compact-chip-row scroll">
+                    {companyOptions.length === 0 ? (
+                      <span className="inventory-filter-muted">Şirkət yoxdur</span>
+                    ) : (
+                      companyOptions.map((item) => {
+                        const id = String(item.id);
+                        const selected = selectedCompanies.includes(id);
 
-          <div className="inventory-filter-section-title">Kateqoriyalar</div>
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`inventory-compact-chip ${
+                              selected ? "active" : ""
+                            }`}
+                            onClick={() =>
+                              toggleMultiValue(setSelectedCompanies, id)
+                            }
+                          >
+                            {item.name}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </MinimalFilterBlock>
 
-          <div className="inventory-chip-row inventory-option-chip-row">
-            {categoryOptions.map((item) => {
-              const id = String(item.id);
-              const selected = selectedCategories.includes(id);
-
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`inventory-filter-chip ${selected ? "active" : ""}`}
-                  onClick={() => toggleMultiValue(setSelectedCategories, id)}
+                <MinimalFilterBlock
+                  title="Kateqoriya"
+                  subtitle={
+                    selectedCategories.length
+                      ? getSelectedNames(categoryOptions, selectedCategories).join(", ")
+                      : "Hamısı"
+                  }
                 >
-                  <span>{selected ? "✓" : "+"}</span>
-                  {item.name}
-                </button>
-              );
-            })}
-          </div>
+                  <div className="inventory-compact-chip-row scroll">
+                    {categoryOptions.length === 0 ? (
+                      <span className="inventory-filter-muted">
+                        Kateqoriya yoxdur
+                      </span>
+                    ) : (
+                      categoryOptions.map((item) => {
+                        const id = String(item.id);
+                        const selected = selectedCategories.includes(id);
+
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`inventory-compact-chip ${
+                              selected ? "active" : ""
+                            }`}
+                            onClick={() =>
+                              toggleMultiValue(setSelectedCategories, id)
+                            }
+                          >
+                            {item.name}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </MinimalFilterBlock>
+
+                <MinimalFilterBlock
+                  title="Yaradılma tarixi"
+                  subtitle={
+                    createdFrom || createdTo
+                      ? `${formatInputDate(createdFrom) || "..."} - ${
+                          formatInputDate(createdTo) || "..."
+                        }`
+                      : "Tarix seçilməyib"
+                  }
+                  wide
+                >
+                  <div className="inventory-minimal-date-row">
+                    <label>
+                      <span>Başlanğıc</span>
+                      <input
+                        type="date"
+                        value={createdFrom}
+                        onChange={(e) => setCreatedFrom(e.target.value)}
+                      />
+                    </label>
+
+                    <label>
+                      <span>Son</span>
+                      <input
+                        type="date"
+                        value={createdTo}
+                        onChange={(e) => setCreatedTo(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                </MinimalFilterBlock>
+              </div>
+            </div>
+          )}
         </section>
 
         <div className="inventory-chart-card">
@@ -2652,6 +2788,330 @@ return finalProfile;
           font-size: 12px;
           font-weight: 800;
           word-break: break-word;
+        }
+
+
+        .inventory-filter-card-minimal {
+          padding: 16px;
+          border-radius: 26px;
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid #e5e7eb;
+          box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+        }
+
+        .inventory-filter-minimal-top {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 12px;
+          align-items: center;
+        }
+
+        .inventory-search-shell {
+          position: relative;
+          display: flex;
+          align-items: center;
+          min-height: 48px;
+          background: #f8fafc;
+          border: 1px solid #e5e7eb;
+          border-radius: 18px;
+          transition: 0.18s ease;
+        }
+
+        .inventory-search-shell:focus-within {
+          background: #ffffff;
+          border-color: #cbd5e1;
+          box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.04);
+        }
+
+        .inventory-search-icon {
+          width: 44px;
+          color: #94a3b8;
+          display: inline-flex;
+          justify-content: center;
+          font-size: 18px;
+          flex: 0 0 auto;
+        }
+
+        .inventory-search-shell input {
+          width: 100%;
+          border: 0;
+          outline: 0;
+          background: transparent;
+          color: #0f172a;
+          font-size: 14px;
+          font-weight: 700;
+          padding: 0 12px 0 0;
+        }
+
+        .inventory-search-shell input::placeholder {
+          color: #94a3b8;
+          font-weight: 600;
+        }
+
+        .inventory-search-clear {
+          width: 30px;
+          height: 30px;
+          margin-right: 8px;
+          border: 0;
+          border-radius: 999px;
+          background: #e2e8f0;
+          color: #475569;
+          cursor: pointer;
+          font-size: 18px;
+          line-height: 1;
+        }
+
+        .inventory-filter-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .inventory-filter-toggle,
+        .inventory-soft-btn,
+        .inventory-ghost-btn {
+          height: 44px;
+          border: 0;
+          border-radius: 15px;
+          padding: 0 14px;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 900;
+          white-space: nowrap;
+          transition: 0.18s ease;
+        }
+
+        .inventory-filter-toggle {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          background: #111827;
+          color: #ffffff;
+        }
+
+        .inventory-filter-toggle.active {
+          background: #0f172a;
+          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+        }
+
+        .inventory-filter-toggle b {
+          min-width: 22px;
+          height: 22px;
+          padding: 0 7px;
+          border-radius: 999px;
+          display: inline-flex;
+          justify-content: center;
+          align-items: center;
+          background: #ffffff;
+          color: #111827;
+          font-size: 12px;
+        }
+
+        .inventory-soft-btn {
+          background: #f1f5f9;
+          color: #334155;
+        }
+
+        .inventory-soft-btn:hover {
+          background: #e2e8f0;
+        }
+
+        .inventory-ghost-btn {
+          background: transparent;
+          color: #64748b;
+          border: 1px solid #e5e7eb;
+        }
+
+        .inventory-ghost-btn:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
+
+        .inventory-filter-summary-line {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+          margin-top: 10px;
+          min-height: 24px;
+        }
+
+        .inventory-filter-summary-line span {
+          display: inline-flex;
+          height: 24px;
+          align-items: center;
+          padding: 0 9px;
+          border-radius: 999px;
+          background: #ecfdf5;
+          color: #047857;
+          font-size: 12px;
+          font-weight: 900;
+        }
+
+        .inventory-filter-summary-line em {
+          color: #64748b;
+          font-style: normal;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .inventory-filter-panel {
+          margin-top: 14px;
+          padding-top: 14px;
+          border-top: 1px solid #eef2f7;
+        }
+
+        .inventory-filter-panel-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+
+        .inventory-minimal-filter-block {
+          padding: 13px;
+          border-radius: 20px;
+          background: #f8fafc;
+          border: 1px solid #eef2f7;
+        }
+
+        .inventory-minimal-filter-block.wide {
+          grid-column: 1 / -1;
+        }
+
+        .inventory-minimal-filter-block-head {
+          margin-bottom: 10px;
+        }
+
+        .inventory-minimal-filter-block-head strong {
+          display: block;
+          color: #0f172a;
+          font-size: 13px;
+          font-weight: 950;
+        }
+
+        .inventory-minimal-filter-block-head span {
+          display: block;
+          margin-top: 3px;
+          color: #64748b;
+          font-size: 11px;
+          font-weight: 700;
+          line-height: 1.35;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .inventory-compact-chip-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 7px;
+          max-height: 118px;
+          overflow: auto;
+          padding-right: 2px;
+        }
+
+        .inventory-compact-chip-row.scroll {
+          max-height: 128px;
+        }
+
+        .inventory-compact-chip {
+          border: 1px solid #e2e8f0;
+          background: #ffffff;
+          color: #475569;
+          border-radius: 999px;
+          padding: 8px 10px;
+          cursor: pointer;
+          font-size: 12px;
+          font-weight: 850;
+          transition: 0.16s ease;
+        }
+
+        .inventory-compact-chip:hover {
+          border-color: #cbd5e1;
+          background: #ffffff;
+        }
+
+        .inventory-compact-chip.active {
+          background: #0f172a;
+          border-color: #0f172a;
+          color: #ffffff;
+          box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+        }
+
+        .inventory-filter-muted {
+          color: #94a3b8;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .inventory-minimal-date-row {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .inventory-minimal-date-row label {
+          display: grid;
+          gap: 6px;
+        }
+
+        .inventory-minimal-date-row label span {
+          color: #64748b;
+          font-size: 11px;
+          font-weight: 900;
+        }
+
+        .inventory-minimal-date-row input {
+          height: 42px;
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          background: #ffffff;
+          color: #0f172a;
+          padding: 0 11px;
+          outline: 0;
+          font-size: 13px;
+          font-weight: 800;
+        }
+
+        .inventory-minimal-date-row input:focus {
+          border-color: #94a3b8;
+          box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.04);
+        }
+
+        @media (max-width: 1100px) {
+          .inventory-filter-minimal-top {
+            grid-template-columns: 1fr;
+          }
+
+          .inventory-filter-actions {
+            justify-content: flex-start;
+            flex-wrap: wrap;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .inventory-filter-panel-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .inventory-minimal-date-row {
+            grid-template-columns: 1fr;
+          }
+
+          .inventory-filter-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .inventory-filter-toggle {
+            grid-column: 1 / -1;
+            justify-content: center;
+          }
+
+          .inventory-soft-btn,
+          .inventory-ghost-btn {
+            width: 100%;
+          }
         }
       `}</style>
     </div>
@@ -3635,5 +4095,20 @@ function EditField({ label, children, wide, full }) {
       <span>{label}</span>
       {children}
     </label>
+  );
+}
+
+function MinimalFilterBlock({ title, subtitle, children, wide }) {
+  return (
+    <div className={`inventory-minimal-filter-block ${wide ? "wide" : ""}`}>
+      <div className="inventory-minimal-filter-block-head">
+        <div>
+          <strong>{title}</strong>
+          <span>{subtitle}</span>
+        </div>
+      </div>
+
+      {children}
+    </div>
   );
 }

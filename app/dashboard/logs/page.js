@@ -49,6 +49,15 @@ function formatDateOnly(value) {
   });
 }
 
+function formatInputDate(value) {
+  if (!value) return "";
+
+  const [year, month, day] = String(value).split("-");
+  if (!year || !month || !day) return "";
+
+  return `${day}.${month}.${year}`;
+}
+
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -266,6 +275,8 @@ export default function InventoryLogsPage() {
   const [logs, setLogs] = useState([]);
 
   const [search, setSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [selectedFromCompanies, setSelectedFromCompanies] = useState([]);
   const [selectedToCompanies, setSelectedToCompanies] = useState([]);
@@ -310,7 +321,8 @@ export default function InventoryLogsPage() {
         cache: "no-store",
       });
 
-      const json = await res.json();
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
 
       if (!res.ok) {
         throw new Error(json.error || "Loglar yüklənmədi.");
@@ -413,7 +425,8 @@ export default function InventoryLogsPage() {
           selectedToCompanies.includes(toCompanyId)) &&
         (selectedPerformers.length === 0 ||
           selectedPerformers.includes(performerId)) &&
-        ((!dateFrom && !dateTo) || isDateInRange(log.created_at, dateFrom, dateTo))
+        ((!dateFrom && !dateTo) ||
+          isDateInRange(log.created_at, dateFrom, dateTo))
       );
     });
   }, [
@@ -546,6 +559,51 @@ export default function InventoryLogsPage() {
     setPage(1);
   }
 
+  function getActiveFilterCount() {
+    let count = 0;
+
+    if (search.trim()) count += 1;
+    if (selectedTypes.length) count += 1;
+    if (selectedFromCompanies.length) count += 1;
+    if (selectedToCompanies.length) count += 1;
+    if (selectedPerformers.length) count += 1;
+    if (dateFrom || dateTo) count += 1;
+
+    return count;
+  }
+
+  function getSelectedNames(options, selectedIds) {
+    return options
+      .filter((item) => selectedIds.includes(String(item.id)))
+      .map((item) => item.name);
+  }
+
+  function renderFilterSummary() {
+    const parts = [];
+
+    if (selectedTypes.length) {
+      parts.push(`${selectedTypes.length} tip`);
+    }
+
+    if (selectedFromCompanies.length) {
+      parts.push(`${selectedFromCompanies.length} əvvəlki şirkət`);
+    }
+
+    if (selectedToCompanies.length) {
+      parts.push(`${selectedToCompanies.length} yeni şirkət`);
+    }
+
+    if (selectedPerformers.length) {
+      parts.push(`${selectedPerformers.length} icraçı`);
+    }
+
+    if (dateFrom || dateTo) {
+      parts.push("tarix aralığı");
+    }
+
+    return parts.length ? parts.join(" · ") : "Filter seçilməyib";
+  }
+
   async function exportExcel() {
     try {
       const XLSX = await ensureXlsx();
@@ -558,7 +616,9 @@ export default function InventoryLogsPage() {
       XLSX.writeFile(wb, `inventory-logs-${toDateInputValue(new Date())}.xlsx`);
     } catch (err) {
       console.error("EXCEL EXPORT ERROR:", err);
-      alert("Excel export zamanı xəta baş verdi. xlsx paketinin quraşdırıldığını yoxla.");
+      alert(
+        "Excel export zamanı xəta baş verdi. xlsx paketinin quraşdırıldığını yoxla."
+      );
     }
   }
 
@@ -712,8 +772,12 @@ export default function InventoryLogsPage() {
                         <span class="muted">${getInventoryMeta(log) || "-"}</span>
                       </td>
                       <td>${getTransferTypeLabel(log.transfer_type)}</td>
-                      <td>${getFromPerson(log)}<br /><span class="muted">${getStatusLabel(log.from_status)}</span></td>
-                      <td>${getToPerson(log)}<br /><span class="muted">${getStatusLabel(log.to_status)}</span></td>
+                      <td>${getFromPerson(log)}<br /><span class="muted">${getStatusLabel(
+                        log.from_status
+                      )}</span></td>
+                      <td>${getToPerson(log)}<br /><span class="muted">${getStatusLabel(
+                        log.to_status
+                      )}</span></td>
                       <td>${getFromCompany(log)} → ${getToCompany(log)}</td>
                       <td>${getPerformer(log)}</td>
                       <td>${log.note || "-"}</td>
@@ -779,139 +843,236 @@ export default function InventoryLogsPage() {
         <StatCard label="Anbar" value={loading ? "..." : summary.warehouse} />
       </div>
 
-      <div className="logsFiltersCard">
-        <div className="logsFiltersHead">
-          <div>
-            <h3>Filterlər</h3>
-            <p>Axtarış, tip, şirkət, icra edən və tarix aralığı üzrə süz.</p>
+      <div className="logsFiltersCard logsFiltersCardMinimal">
+        <div className="logsFilterTop">
+          <div className="logsSearchShell">
+            <span className="logsSearchIcon">⌕</span>
+
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Kod, inventar, şəxs, şirkət, departament, lokasiya üzrə axtar..."
+            />
+
+            {search.trim() && (
+              <button
+                type="button"
+                className="logsSearchClear"
+                onClick={() => setSearch("")}
+                aria-label="Axtarışı təmizlə"
+              >
+                ×
+              </button>
+            )}
           </div>
 
-          <button type="button" onClick={resetFilters}>
-            Sıfırla
-          </button>
+          <div className="logsFilterActions">
+            <button
+              type="button"
+              className={`logsFilterToggle ${filtersOpen ? "active" : ""}`}
+              onClick={() => setFiltersOpen((prev) => !prev)}
+            >
+              <span>Filter aç/bağla</span>
+              {getActiveFilterCount() > 0 && <b>{getActiveFilterCount()}</b>}
+            </button>
+
+            <button type="button" className="logsSoftBtn" onClick={loadLogs}>
+              Yenilə
+            </button>
+
+            <button
+              type="button"
+              className="logsGhostBtn"
+              onClick={resetFilters}
+              disabled={getActiveFilterCount() === 0}
+            >
+              Sıfırla
+            </button>
+          </div>
         </div>
 
-        <div className="logsSearchRow">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Kod, inventar, şəxs, şirkət, departament, lokasiya üzrə axtar..."
-          />
-
-          <button type="button" onClick={loadLogs}>
-            Yenilə
-          </button>
+        <div className="logsFilterSummaryLine">
+          <span>{summary.shown} nəticə</span>
+          <em>{renderFilterSummary()}</em>
         </div>
 
-        <div className="logsDateRow">
-          <label>
-            <span>Başlanğıc tarix</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-          </label>
-
-          <label>
-            <span>Son tarix</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </label>
-        </div>
-
-        <FilterGroup title="Yerdəyişmə tipi">
-          {TRANSFER_TYPE_OPTIONS.map((type) => {
-            const selected = selectedTypes.includes(type.value);
-
-            return (
-              <button
-                key={type.value}
-                type="button"
-                className={`logsChip ${selected ? "active" : ""}`}
-                onClick={() => toggleMultiValue(setSelectedTypes, type.value)}
+        {filtersOpen && (
+          <div className="logsFilterPanel">
+            <div className="logsFilterPanelGrid">
+              <MinimalFilterBlock
+                title="Yerdəyişmə tipi"
+                subtitle={
+                  selectedTypes.length
+                    ? selectedTypes.map((x) => getTransferTypeLabel(x)).join(", ")
+                    : "Hamısı"
+                }
               >
-                <span>{selected ? "✓" : "+"}</span>
-                {type.label}
-              </button>
-            );
-          })}
-        </FilterGroup>
+                <div className="logsCompactChipRow">
+                  {TRANSFER_TYPE_OPTIONS.map((type) => {
+                    const selected = selectedTypes.includes(type.value);
 
-        <FilterGroup title="Əvvəlki şirkət">
-          {fromCompanyOptions.length === 0 ? (
-            <span className="logsEmptyMini">Şirkət yoxdur</span>
-          ) : (
-            fromCompanyOptions.map((company) => {
-              const selected = selectedFromCompanies.includes(company.id);
+                    return (
+                      <button
+                        key={type.value}
+                        type="button"
+                        className={`logsCompactChip ${selected ? "active" : ""}`}
+                        onClick={() =>
+                          toggleMultiValue(setSelectedTypes, type.value)
+                        }
+                      >
+                        {type.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </MinimalFilterBlock>
 
-              return (
-                <button
-                  key={company.id}
-                  type="button"
-                  className={`logsChip ${selected ? "active" : ""}`}
-                  onClick={() =>
-                    toggleMultiValue(setSelectedFromCompanies, company.id)
-                  }
-                >
-                  <span>{selected ? "✓" : "+"}</span>
-                  {company.name}
-                </button>
-              );
-            })
-          )}
-        </FilterGroup>
+              <MinimalFilterBlock
+                title="Əvvəlki şirkət"
+                subtitle={
+                  selectedFromCompanies.length
+                    ? getSelectedNames(
+                        fromCompanyOptions,
+                        selectedFromCompanies
+                      ).join(", ")
+                    : "Hamısı"
+                }
+              >
+                <div className="logsCompactChipRow scroll">
+                  {fromCompanyOptions.length === 0 ? (
+                    <span className="logsFilterMuted">Şirkət yoxdur</span>
+                  ) : (
+                    fromCompanyOptions.map((company) => {
+                      const selected = selectedFromCompanies.includes(company.id);
 
-        <FilterGroup title="Yeni şirkət">
-          {toCompanyOptions.length === 0 ? (
-            <span className="logsEmptyMini">Şirkət yoxdur</span>
-          ) : (
-            toCompanyOptions.map((company) => {
-              const selected = selectedToCompanies.includes(company.id);
+                      return (
+                        <button
+                          key={company.id}
+                          type="button"
+                          className={`logsCompactChip ${
+                            selected ? "active" : ""
+                          }`}
+                          onClick={() =>
+                            toggleMultiValue(
+                              setSelectedFromCompanies,
+                              company.id
+                            )
+                          }
+                        >
+                          {company.name}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </MinimalFilterBlock>
 
-              return (
-                <button
-                  key={company.id}
-                  type="button"
-                  className={`logsChip ${selected ? "active" : ""}`}
-                  onClick={() =>
-                    toggleMultiValue(setSelectedToCompanies, company.id)
-                  }
-                >
-                  <span>{selected ? "✓" : "+"}</span>
-                  {company.name}
-                </button>
-              );
-            })
-          )}
-        </FilterGroup>
+              <MinimalFilterBlock
+                title="Yeni şirkət"
+                subtitle={
+                  selectedToCompanies.length
+                    ? getSelectedNames(toCompanyOptions, selectedToCompanies).join(
+                        ", "
+                      )
+                    : "Hamısı"
+                }
+              >
+                <div className="logsCompactChipRow scroll">
+                  {toCompanyOptions.length === 0 ? (
+                    <span className="logsFilterMuted">Şirkət yoxdur</span>
+                  ) : (
+                    toCompanyOptions.map((company) => {
+                      const selected = selectedToCompanies.includes(company.id);
 
-        <FilterGroup title="İcra edən">
-          {performerOptions.length === 0 ? (
-            <span className="logsEmptyMini">İcraçı yoxdur</span>
-          ) : (
-            performerOptions.map((person) => {
-              const selected = selectedPerformers.includes(person.id);
+                      return (
+                        <button
+                          key={company.id}
+                          type="button"
+                          className={`logsCompactChip ${
+                            selected ? "active" : ""
+                          }`}
+                          onClick={() =>
+                            toggleMultiValue(setSelectedToCompanies, company.id)
+                          }
+                        >
+                          {company.name}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </MinimalFilterBlock>
 
-              return (
-                <button
-                  key={person.id}
-                  type="button"
-                  className={`logsChip ${selected ? "active" : ""}`}
-                  onClick={() =>
-                    toggleMultiValue(setSelectedPerformers, person.id)
-                  }
-                >
-                  <span>{selected ? "✓" : "+"}</span>
-                  {person.name}
-                </button>
-              );
-            })
-          )}
-        </FilterGroup>
+              <MinimalFilterBlock
+                title="İcra edən"
+                subtitle={
+                  selectedPerformers.length
+                    ? getSelectedNames(performerOptions, selectedPerformers).join(
+                        ", "
+                      )
+                    : "Hamısı"
+                }
+              >
+                <div className="logsCompactChipRow scroll">
+                  {performerOptions.length === 0 ? (
+                    <span className="logsFilterMuted">İcraçı yoxdur</span>
+                  ) : (
+                    performerOptions.map((person) => {
+                      const selected = selectedPerformers.includes(person.id);
+
+                      return (
+                        <button
+                          key={person.id}
+                          type="button"
+                          className={`logsCompactChip ${
+                            selected ? "active" : ""
+                          }`}
+                          onClick={() =>
+                            toggleMultiValue(setSelectedPerformers, person.id)
+                          }
+                        >
+                          {person.name}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </MinimalFilterBlock>
+
+              <MinimalFilterBlock
+                title="Tarix aralığı"
+                subtitle={
+                  dateFrom || dateTo
+                    ? `${formatInputDate(dateFrom) || "..."} - ${
+                        formatInputDate(dateTo) || "..."
+                      }`
+                    : "Tarix seçilməyib"
+                }
+                wide
+              >
+                <div className="logsMinimalDateRow">
+                  <label>
+                    <span>Başlanğıc</span>
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Son</span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                    />
+                  </label>
+                </div>
+              </MinimalFilterBlock>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="logsTableCard">
@@ -1036,7 +1197,9 @@ export default function InventoryLogsPage() {
                       <td>
                         <div className="logsDateCell">
                           <strong>{formatDateOnly(log.created_at)}</strong>
-                          <span>{formatDate(log.created_at).split(" ").slice(-1)[0]}</span>
+                          <span>
+                            {formatDate(log.created_at).split(" ").slice(-1)[0]}
+                          </span>
                         </div>
                       </td>
 
@@ -1215,11 +1378,17 @@ function StatCard({ label, value }) {
   );
 }
 
-function FilterGroup({ title, children }) {
+function MinimalFilterBlock({ title, subtitle, children, wide }) {
   return (
-    <div className="logsFilterGroup">
-      <div className="logsFilterTitle">{title}</div>
-      <div className="logsChipRow">{children}</div>
+    <div className={`logsMinimalFilterBlock ${wide ? "wide" : ""}`}>
+      <div className="logsMinimalFilterBlockHead">
+        <div>
+          <strong>{title}</strong>
+          <span>{subtitle}</span>
+        </div>
+      </div>
+
+      {children}
     </div>
   );
 }
