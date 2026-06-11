@@ -109,11 +109,37 @@ async function getResponsibleName(supabase, id) {
   return data?.full_name || data?.email || null;
 }
 
+async function getSignedImages(supabase, images) {
+  const list = Array.isArray(images) ? images : [];
+
+  if (list.length === 0) return [];
+
+  const result = [];
+
+  for (const image of list) {
+    if (!image?.path) continue;
+
+    const { data, error } = await supabase.storage
+      .from("inventory-images")
+      .createSignedUrl(image.path, 60 * 10);
+
+    if (!error && data?.signedUrl) {
+      result.push({
+        ...image,
+        signedUrl: data.signedUrl,
+      });
+    }
+  }
+
+  return result;
+}
+
 export default async function InventoryQrPublicPage({ params }) {
   const resolvedParams = await params;
   const token = decodeURIComponent(resolvedParams?.token || "").trim();
 
   let item = null;
+  let images = [];
   let errorText = "";
 
   if (!token) {
@@ -150,6 +176,7 @@ export default async function InventoryQrPublicPage({ params }) {
         warranty_start_date,
         warranty_end_date,
         qr_token,
+        images,
         current_location,
         company_id,
         department_id,
@@ -170,18 +197,25 @@ export default async function InventoryQrPublicPage({ params }) {
     }
 
     if (item) {
-      const [companyName, departmentName, categoryName, responsibleName] =
-        await Promise.all([
-          getNameById(supabase, "companies", item.company_id),
-          getNameById(supabase, "departments", item.department_id),
-          getNameById(supabase, "inventory_categories", item.category_id),
-          getResponsibleName(supabase, item.responsible_user_id),
-        ]);
+      const [
+        companyName,
+        departmentName,
+        categoryName,
+        responsibleName,
+        signedImages,
+      ] = await Promise.all([
+        getNameById(supabase, "companies", item.company_id),
+        getNameById(supabase, "departments", item.department_id),
+        getNameById(supabase, "inventory_categories", item.category_id),
+        getResponsibleName(supabase, item.responsible_user_id),
+        getSignedImages(supabase, item.images),
+      ]);
 
       item.company_name = companyName;
       item.department_name = departmentName;
       item.category_name = categoryName;
       item.responsible_name = responsibleName;
+      images = signedImages;
     }
   } catch (error) {
     errorText = error?.message || "Sistem xətası baş verdi.";
@@ -244,6 +278,30 @@ export default async function InventoryQrPublicPage({ params }) {
             <strong>{warrantyLabel(item)}</strong>
           </div>
         </div>
+
+        {images.length > 0 && (
+          <div className="qr-public-section">
+            <h2>Şəkillər</h2>
+
+            <div className="qr-public-image-grid">
+              {images.map((image, index) => (
+                <a
+                  key={`${image.path}-${index}`}
+                  href={image.signedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="qr-public-image-card"
+                >
+                  <img
+                    src={image.signedUrl}
+                    alt={image.name || `İnventar şəkli ${index + 1}`}
+                  />
+                  <span>{image.name || `Şəkil ${index + 1}`}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="qr-public-section">
           <h2>Əsas məlumatlar</h2>

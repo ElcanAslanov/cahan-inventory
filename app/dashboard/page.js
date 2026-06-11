@@ -1,6 +1,6 @@
-import DashboardHome from "../../components/dashboard/DashboardHome";
+import DashboardRouter from "../../components/dashboard/DashboardRouter";
 import "../../styles/dashboard-home.css";
 
 export default function DashboardPage() {
-  return <DashboardHome />;
+  return <DashboardRouter />;
 }

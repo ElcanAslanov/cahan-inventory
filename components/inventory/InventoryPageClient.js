@@ -317,7 +317,7 @@ function makeQrToken() {
 function getQrUrl(token) {
   if (!token) return "";
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `${origin}/inventory/qr/${encodeURIComponent(token)}`;
+  return `${origin}/dashboard/inventory/qr/${encodeURIComponent(token)}`;
 }
 
 function getQrImageUrl(token, size = 260) {

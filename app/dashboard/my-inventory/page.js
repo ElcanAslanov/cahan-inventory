@@ -209,6 +209,15 @@ function getAssetNote(row) {
   return row.note || row.notes || item.note || item.notes || item.description || "-";
 }
 
+function getAssetImages(row) {
+  const item = getItem(row);
+  return Array.isArray(item?.images) ? item.images : [];
+}
+
+function getAssetImageCount(row) {
+  return getAssetImages(row).length;
+}
+
 function uniqRows(rows) {
   const map = new Map();
 
@@ -267,6 +276,7 @@ function makeMyInventoryReportRows(list) {
     Status: statusLabel(getAssetStatus(row)),
     "Təhkim tarixi": formatDate(getAssignedDate(row)),
     Qiymət: formatMoney(getAssetPrice(row)),
+    "Şəkil sayı": getAssetImageCount(row),
     Qeyd: getAssetNote(row),
   }));
 }
@@ -362,6 +372,7 @@ function buildMyInventoryPrintHtml({
           <td>${statusLabel(getAssetStatus(row))}</td>
           <td>${formatDate(getAssignedDate(row))}</td>
           <td>${formatMoney(getAssetPrice(row))}</td>
+          <td>${getAssetImageCount(row)}</td>
         </tr>
       `
     )
@@ -374,10 +385,7 @@ function buildMyInventoryPrintHtml({
         <meta charset="utf-8" />
         <title>My Inventory Report</title>
         <style>
-          * {
-            box-sizing: border-box;
-          }
-
+          * { box-sizing: border-box; }
           body {
             margin: 0;
             padding: 28px;
@@ -385,7 +393,6 @@ function buildMyInventoryPrintHtml({
             color: #0f172a;
             background: #f8fafc;
           }
-
           .report {
             max-width: 1180px;
             margin: 0 auto;
@@ -395,7 +402,6 @@ function buildMyInventoryPrintHtml({
             overflow: hidden;
             box-shadow: 0 28px 80px rgba(15, 23, 42, 0.12);
           }
-
           .hero {
             padding: 30px;
             color: #ffffff;
@@ -407,7 +413,6 @@ function buildMyInventoryPrintHtml({
             gap: 22px;
             align-items: flex-start;
           }
-
           .hero span {
             display: inline-flex;
             margin-bottom: 10px;
@@ -417,14 +422,12 @@ function buildMyInventoryPrintHtml({
             letter-spacing: 0.12em;
             text-transform: uppercase;
           }
-
           .hero h1 {
             margin: 0;
             font-size: 36px;
             line-height: 1;
             letter-spacing: -0.06em;
           }
-
           .hero p {
             margin: 12px 0 0;
             color: #cbd5e1;
@@ -432,7 +435,6 @@ function buildMyInventoryPrintHtml({
             line-height: 1.6;
             max-width: 700px;
           }
-
           .logo {
             width: 64px;
             height: 64px;
@@ -445,7 +447,6 @@ function buildMyInventoryPrintHtml({
             font-size: 19px;
             box-shadow: 0 20px 55px rgba(2, 132, 199, 0.35);
           }
-
           .meta {
             padding: 18px 30px;
             display: flex;
@@ -457,14 +458,12 @@ function buildMyInventoryPrintHtml({
             font-size: 13px;
             font-weight: 800;
           }
-
           .cards {
             padding: 22px 30px;
             display: grid;
             grid-template-columns: repeat(5, 1fr);
             gap: 12px;
           }
-
           .card,
           .miniCard {
             border: 1px solid #e2e8f0;
@@ -472,7 +471,6 @@ function buildMyInventoryPrintHtml({
             padding: 16px;
             background: #ffffff;
           }
-
           .card span,
           .miniCard span {
             display: block;
@@ -482,7 +480,6 @@ function buildMyInventoryPrintHtml({
             text-transform: uppercase;
             letter-spacing: 0.08em;
           }
-
           .card strong,
           .miniCard strong {
             display: block;
@@ -491,41 +488,30 @@ function buildMyInventoryPrintHtml({
             font-size: 28px;
             letter-spacing: -0.05em;
           }
-
-          .section {
-            padding: 0 30px 24px;
-          }
-
+          .section { padding: 0 30px 24px; }
           .section h2 {
             margin: 0 0 12px;
             color: #0f172a;
             font-size: 19px;
             letter-spacing: -0.04em;
           }
-
           .miniGrid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
             gap: 10px;
           }
-
           .miniCard {
             padding: 13px;
             border-radius: 16px;
             background: #f8fafc;
           }
-
-          .miniCard strong {
-            font-size: 22px;
-          }
-
+          .miniCard strong { font-size: 22px; }
           table {
             width: 100%;
             border-collapse: collapse;
             overflow: hidden;
             border-radius: 18px;
           }
-
           th {
             background: #0f172a;
             color: #ffffff;
@@ -533,7 +519,6 @@ function buildMyInventoryPrintHtml({
             font-size: 11px;
             padding: 12px;
           }
-
           td {
             border-bottom: 1px solid #e2e8f0;
             padding: 11px 12px;
@@ -541,38 +526,32 @@ function buildMyInventoryPrintHtml({
             font-size: 12px;
             vertical-align: top;
           }
-
           td b {
             display: block;
             color: #0f172a;
           }
-
           td small {
             display: block;
             margin-top: 4px;
             color: #64748b;
             font-weight: 700;
           }
-
           .footer {
             padding: 18px 30px 26px;
             color: #64748b;
             font-size: 12px;
             font-weight: 700;
           }
-
           @media print {
             body {
               padding: 0;
               background: #ffffff;
             }
-
             .report {
               box-shadow: none;
               border: 0;
               border-radius: 0;
             }
-
             .hero,
             .card,
             .miniCard,
@@ -580,7 +559,6 @@ function buildMyInventoryPrintHtml({
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
-
             @page {
               size: A4 landscape;
               margin: 10mm;
@@ -588,7 +566,6 @@ function buildMyInventoryPrintHtml({
           }
         </style>
       </head>
-
       <body>
         <main class="report">
           <section class="hero">
@@ -600,7 +577,6 @@ function buildMyInventoryPrintHtml({
                 kateqoriya, şirkət və departament bölgüsünü göstərir.
               </p>
             </div>
-
             <div class="logo">CI</div>
           </section>
 
@@ -666,12 +642,13 @@ function buildMyInventoryPrintHtml({
                   <th>Status</th>
                   <th>Təhkim tarixi</th>
                   <th>Qiymət</th>
+                  <th>Şəkil</th>
                 </tr>
               </thead>
               <tbody>
                 ${
                   tableRows ||
-                  `<tr><td colspan="9">Hesabat üçün inventar yoxdur.</td></tr>`
+                  `<tr><td colspan="10">Hesabat üçün inventar yoxdur.</td></tr>`
                 }
               </tbody>
             </table>
@@ -1051,6 +1028,11 @@ export default function MyInventoryPage() {
         bValue = getAssignedDate(b);
       }
 
+      if (sortBy === "images") {
+        aValue = getAssetImageCount(a);
+        bValue = getAssetImageCount(b);
+      }
+
       return compareValues(aValue, bValue, sortDir);
     });
 
@@ -1197,7 +1179,7 @@ export default function MyInventoryPage() {
     }, 220);
   }
 
-    function getActiveFiltersText() {
+  function getActiveFiltersText() {
     const parts = [];
 
     if (search.trim()) parts.push(`Axtarış: "${search.trim()}"`);
@@ -1316,6 +1298,7 @@ export default function MyInventoryPage() {
             Sizə təhkim olunmuş inventarları, statusları və detalları izləyin.
           </p>
         </div>
+
         <div className="my-inventory-hero-actions">
           <button
             type="button"
@@ -1759,6 +1742,12 @@ export default function MyInventoryPage() {
                       </button>
                     </th>
 
+                    <th>
+                      <button type="button" onClick={() => toggleSort("images")}>
+                        Şəkil <span>{sortIcon("images")}</span>
+                      </button>
+                    </th>
+
                     <th>Əməliyyatlar</th>
                   </tr>
                 </thead>
@@ -1789,6 +1778,12 @@ export default function MyInventoryPage() {
                       </td>
 
                       <td>{formatDate(getAssignedDate(row))}</td>
+
+                      <td>
+                        <span className="my-inventory-image-count">
+                          {getAssetImageCount(row)}
+                        </span>
+                      </td>
 
                       <td>
                         <div className="settings-actions">
@@ -1839,6 +1834,11 @@ export default function MyInventoryPage() {
                     <div>
                       <span>Departament</span>
                       <strong>{getDepartmentName(row)}</strong>
+                    </div>
+
+                    <div>
+                      <span>Şəkil</span>
+                      <strong>{getAssetImageCount(row)}</strong>
                     </div>
                   </div>
 
@@ -1923,6 +1923,79 @@ function DetailRow({ label, value }) {
   );
 }
 
+function MyInventoryImageGallery({ images }) {
+  const [signedImages, setSignedImages] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadSignedImages() {
+      const list = Array.isArray(images) ? images : [];
+
+      if (list.length === 0) {
+        setSignedImages([]);
+        return;
+      }
+
+      setLoading(true);
+
+      const result = [];
+
+      for (const image of list) {
+        if (!image?.path) continue;
+
+        const { data, error } = await supabase.storage
+          .from("inventory-images")
+          .createSignedUrl(image.path, 60 * 10);
+
+        if (!error && data?.signedUrl) {
+          result.push({
+            ...image,
+            signedUrl: data.signedUrl,
+          });
+        }
+      }
+
+      if (alive) {
+        setSignedImages(result);
+        setLoading(false);
+      }
+    }
+
+    loadSignedImages();
+
+    return () => {
+      alive = false;
+    };
+  }, [images]);
+
+  if (loading) {
+    return <div className="my-inventory-image-empty">Şəkillər yüklənir...</div>;
+  }
+
+  if (!signedImages.length) {
+    return <div className="my-inventory-image-empty">Şəkil əlavə edilməyib.</div>;
+  }
+
+  return (
+    <div className="my-inventory-image-grid">
+      {signedImages.map((image, index) => (
+        <a
+          key={`${image.path}-${index}`}
+          href={image.signedUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="my-inventory-image-card"
+        >
+          <img src={image.signedUrl} alt={image.name || "İnventar şəkli"} />
+          <span>{image.name || `Şəkil ${index + 1}`}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function InventoryViewModal({ item, visible, onClose }) {
   if (!item) return null;
 
@@ -1936,6 +2009,7 @@ function InventoryViewModal({ item, visible, onClose }) {
   const assignedDate = getAssignedDate(item);
   const price = getAssetPrice(item);
   const note = getAssetNote(item);
+  const images = getAssetImages(item);
 
   return (
     <div
@@ -2012,6 +2086,15 @@ function InventoryViewModal({ item, visible, onClose }) {
                 {note && note !== "-" ? note : "Bu inventar üçün qeyd yoxdur."}
               </div>
             </section>
+
+            <section className="my-inventory-view-section">
+              <div className="my-inventory-view-section-head">
+                <span>04</span>
+                <h3>Şəkillər</h3>
+              </div>
+
+              <MyInventoryImageGallery images={images} />
+            </section>
           </main>
 
           <aside className="my-inventory-view-side">
@@ -2028,6 +2111,11 @@ function InventoryViewModal({ item, visible, onClose }) {
             <div className="my-inventory-view-side-card">
               <span>Təhkim tarixi</span>
               <strong>{formatDate(assignedDate)}</strong>
+            </div>
+
+            <div className="my-inventory-view-side-card">
+              <span>Şəkillər</span>
+              <strong>{images.length} ədəd</strong>
             </div>
 
             <div className="my-inventory-view-side-card accent">
