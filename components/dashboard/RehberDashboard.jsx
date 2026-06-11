@@ -1,88 +1,215 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
-export default function RehberDashboard({ profile, allowedCompanyIds, accessScope }) {
+export default function RehberDashboard({
+  authUser,
+  profile,
+  allowedCompanyIds = [],
+  accessScope = "OWN_COMPANY",
+}) {
   const [loading, setLoading] = useState(true);
-  const [assets, setAssets] = useState([]);
-  const [tasks, setTasks] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [items, setItems] = useState([]);
+  const [companies, setCompanies] = useState([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    loadDashboard();
-  }, [allowedCompanyIds?.join(",")]);
+    if (authUser?.id) {
+      loadDashboard();
+    }
+  }, [authUser?.id, accessScope, JSON.stringify(allowedCompanyIds)]);
 
   async function loadDashboard() {
     try {
       setLoading(true);
       setError("");
 
-      if (!allowedCompanyIds || allowedCompanyIds.length === 0) {
-        setAssets([]);
-        setTasks([]);
-        setUsers([]);
-        return;
+      const safeCompanyIds = Array.isArray(allowedCompanyIds)
+        ? allowedCompanyIds.filter(Boolean)
+        : [];
+
+      let companiesQuery = supabase
+        .from("companies")
+        .select("id,name,status")
+        .order("name", { ascending: true });
+
+      if (accessScope !== "ALL_COMPANIES" && safeCompanyIds.length > 0) {
+        companiesQuery = companiesQuery.in("id", safeCompanyIds);
       }
 
-      const [assetsRes, tasksRes, usersRes] = await Promise.all([
-        supabase
-          .from("assets")
-          .select("id, name, status, company_id, assigned_to")
-          .in("company_id", allowedCompanyIds),
+      const { data: companyRows, error: companiesError } = await companiesQuery;
 
-        supabase
-          .from("tasks")
-          .select("id, title, status, priority, assigned_to, company_id")
-          .in("company_id", allowedCompanyIds),
+      if (companiesError) {
+        throw new Error(
+          companiesError.message ||
+            companiesError.details ||
+            "Şirkətlər oxunmadı."
+        );
+      }
 
-        supabase
-          .from("profiles")
-          .select("id, full_name, email, company_id, role")
-          .in("company_id", allowedCompanyIds),
-      ]);
+      let itemsQuery = supabase
+        .from("inventory_items")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-      if (assetsRes.error) throw assetsRes.error;
-      if (tasksRes.error) throw tasksRes.error;
-      if (usersRes.error) throw usersRes.error;
+      if (accessScope !== "ALL_COMPANIES" && safeCompanyIds.length > 0) {
+        itemsQuery = itemsQuery.in("company_id", safeCompanyIds);
+      }
 
-      setAssets(assetsRes.data || []);
-      setTasks(tasksRes.data || []);
-      setUsers(usersRes.data || []);
+      if (
+        accessScope !== "ALL_COMPANIES" &&
+        safeCompanyIds.length === 0 &&
+        profile?.company_id
+      ) {
+        itemsQuery = itemsQuery.eq("company_id", profile.company_id);
+      }
+
+      const { data: itemRows, error: itemsError } = await itemsQuery;
+
+      if (itemsError) {
+        console.error("REHBER INVENTORY ERROR DETAILS:", {
+          message: itemsError.message,
+          details: itemsError.details,
+          hint: itemsError.hint,
+          code: itemsError.code,
+        });
+
+        throw new Error(
+          itemsError.message ||
+            itemsError.details ||
+            "Rəhbər dashboard inventarları oxunmadı."
+        );
+      }
+
+      setCompanies(companyRows || []);
+      setItems(itemRows || []);
     } catch (err) {
-      console.error("RehberDashboard error:", err);
-      setError(err?.message || "Rəhbər dashboard yüklənmədi.");
+      console.error("RehberDashboard error details:", {
+        raw: err,
+        message: err?.message,
+        details: err?.details,
+        hint: err?.hint,
+        code: err?.code,
+      });
+
+      setError(
+        err?.message ||
+          err?.details ||
+          "Rəhbər dashboard yüklənərkən xəta baş verdi."
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  const stats = useMemo(() => {
-    return {
-      users: users.length,
-      assets: assets.length,
-      assignedAssets: assets.filter((a) => a.assigned_to).length,
-      openTasks: tasks.filter((t) => t.status !== "DONE").length,
-      urgentTasks: tasks.filter((t) => t.priority === "HIGH" || t.priority === "URGENT").length,
-    };
-  }, [users, assets, tasks]);
+  const companyMap = useMemo(() => {
+    const map = new Map();
 
-  const taskStatusRows = useMemo(() => {
+    companies.forEach((company) => {
+      map.set(String(company.id), company.name);
+    });
+
+    return map;
+  }, [companies]);
+
+  const stats = useMemo(() => {
+    const total = items.length;
+
+    const assigned = items.filter((item) => item.status === "ASSIGNED").length;
+    const inStock = items.filter((item) => item.status === "IN_STOCK").length;
+    const inRepair = items.filter((item) => item.status === "IN_REPAIR").length;
+
+    const unassigned = items.filter((item) => {
+      return (
+        !item.responsible_user_id &&
+        !item.assigned_to &&
+        !item.user_id &&
+        !item.employee_id &&
+        item.status !== "ASSIGNED"
+      );
+    }).length;
+
+    const risky = items.filter((item) => {
+      const health = String(item.health_status || "").toUpperCase();
+
+      return (
+        health === "RISKY" ||
+        health === "BAD" ||
+        health === "CRITICAL" ||
+        health === "WEAK"
+      );
+    }).length;
+
+    return {
+      total,
+      assigned,
+      inStock,
+      inRepair,
+      unassigned,
+      risky,
+    };
+  }, [items]);
+
+  const statusRows = useMemo(() => {
     const map = {};
 
-    for (const task of tasks) {
-      const key = task.status || "UNKNOWN";
+    for (const item of items) {
+      const key = item.status || "UNKNOWN";
       map[key] = (map[key] || 0) + 1;
     }
 
-    return Object.entries(map).map(([label, value]) => ({ label, value }));
-  }, [tasks]);
+    return Object.entries(map)
+      .map(([label, value]) => ({
+        label: humanizeStatus(label),
+        value,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [items]);
+
+  const companyRows = useMemo(() => {
+    const map = new Map();
+
+    for (const item of items) {
+      const companyId = String(item.company_id || "NO_COMPANY");
+      const companyName =
+        companyId === "NO_COMPANY"
+          ? "Şirkət seçilməyib"
+          : companyMap.get(companyId) || "Naməlum şirkət";
+
+      if (!map.has(companyId)) {
+        map.set(companyId, {
+          id: companyId,
+          name: companyName,
+          total: 0,
+          assigned: 0,
+          inStock: 0,
+          inRepair: 0,
+        });
+      }
+
+      const row = map.get(companyId);
+      row.total += 1;
+
+      if (item.status === "ASSIGNED") row.assigned += 1;
+      if (item.status === "IN_STOCK") row.inStock += 1;
+      if (item.status === "IN_REPAIR") row.inRepair += 1;
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [items, companyMap]);
+
+  const latestItems = useMemo(() => {
+    return items.slice(0, 10);
+  }, [items]);
 
   if (loading) {
     return (
       <main className="dashboard-page">
-        <p className="dashboard-muted">Rəhbər dashboard yüklənir...</p>
+        <div className="dashboard-loading-card">
+          <div className="dashboard-loader" />
+          <p>Rəhbər dashboard yüklənir...</p>
+        </div>
       </main>
     );
   }
@@ -93,6 +220,9 @@ export default function RehberDashboard({ profile, allowedCompanyIds, accessScop
         <div className="dashboard-error-card">
           <h2>Xəta</h2>
           <p>{error}</p>
+          <button type="button" onClick={loadDashboard}>
+            Yenidən yoxla
+          </button>
         </div>
       </main>
     );
@@ -103,13 +233,10 @@ export default function RehberDashboard({ profile, allowedCompanyIds, accessScop
       <section className="dashboard-hero">
         <div>
           <p className="dashboard-eyebrow">Rəhbər Dashboard</p>
-          <h1>Komanda və şirkət üzrə nəzarət</h1>
+          <h1>Şirkət inventarlarına nəzarət</h1>
           <p>
-            Burada yalnız sənə icazə verilən şirkətlər üzrə istifadəçilər,
-            assetlər və tapşırıqlar görünür.
-          </p>
-          <p className="dashboard-muted">
-            Access scope: <strong>{accessScope}</strong>
+            Salam, {profile?.full_name || profile?.email || "Rəhbər"}. Burada
+            sənə icazə verilən şirkətlər üzrə inventar vəziyyəti görünür.
           </p>
         </div>
 
@@ -118,27 +245,74 @@ export default function RehberDashboard({ profile, allowedCompanyIds, accessScop
         </button>
       </section>
 
+      <section className="dashboard-grid dashboard-grid-4">
+        <StatCard
+          title="Ümumi inventar"
+          value={stats.total}
+          note="İcazəli şirkətlər üzrə"
+        />
+
+        <StatCard
+          title="Təhkim olunmuş"
+          value={stats.assigned}
+          note="ASSIGNED statuslu"
+        />
+
+        <StatCard
+          title="Anbarda"
+          value={stats.inStock}
+          note="IN_STOCK statuslu"
+        />
+
+        <StatCard
+          title="Təmirdə"
+          value={stats.inRepair}
+          note="IN_REPAIR statuslu"
+        />
+      </section>
+
       <section className="dashboard-grid dashboard-grid-3">
-        <StatCard title="İstifadəçilər" value={stats.users} note="İcazəli şirkətlər üzrə" />
-        <StatCard title="Assetlər" value={stats.assets} note="Şirkət inventarları" />
-        <StatCard title="Təhkim olunmuş" value={stats.assignedAssets} note="İşçilərə verilmiş" />
-        <StatCard title="Açıq tapşırıqlar" value={stats.openTasks} note="Tamamlanmamış" />
-        <StatCard title="Təcili tapşırıqlar" value={stats.urgentTasks} note="HIGH və URGENT" />
+        <StatCard
+          title="Məsul şəxssiz"
+          value={stats.unassigned}
+          note="Təhkim edilməyən inventarlar"
+        />
+
+        <StatCard
+          title="Riskli inventar"
+          value={stats.risky}
+          note="Health status riskli olanlar"
+        />
+
+        <StatCard
+          title="Şirkət sayı"
+          value={companies.length}
+          note={
+            accessScope === "ALL_COMPANIES"
+              ? "Bütün şirkətlər"
+              : "İcazəli şirkətlər"
+          }
+        />
       </section>
 
       <section className="dashboard-two-col">
         <div className="dashboard-card">
           <div className="dashboard-card-head">
-            <h2>Tapşırıq statusları</h2>
-            <span>{tasks.length} tapşırıq</span>
+            <h2>Status bölgüsü</h2>
+            <span>{items.length} inventar</span>
           </div>
 
           <div className="dashboard-chart-list">
-            {taskStatusRows.length === 0 ? (
-              <p className="dashboard-muted">Tapşırıq yoxdur.</p>
+            {statusRows.length === 0 ? (
+              <p className="dashboard-muted">Məlumat yoxdur.</p>
             ) : (
-              taskStatusRows.map((row) => (
-                <ChartRow key={row.label} label={row.label} value={row.value} max={tasks.length} />
+              statusRows.map((row) => (
+                <ChartRow
+                  key={row.label}
+                  label={row.label}
+                  value={row.value}
+                  max={items.length}
+                />
               ))
             )}
           </div>
@@ -146,23 +320,59 @@ export default function RehberDashboard({ profile, allowedCompanyIds, accessScop
 
         <div className="dashboard-card">
           <div className="dashboard-card-head">
-            <h2>Son tapşırıqlar</h2>
-            <span>Top 8</span>
+            <h2>Şirkətlər üzrə inventar</h2>
+            <span>{companyRows.length} şirkət</span>
           </div>
 
           <div className="dashboard-list">
-            {tasks.slice(0, 8).map((task) => (
-              <div className="dashboard-list-item" key={task.id}>
-                <strong>{task.title}</strong>
-                <span>{task.status || "-"}</span>
-                <small>{task.priority || "NORMAL"}</small>
-              </div>
-            ))}
-
-            {tasks.length === 0 && (
-              <p className="dashboard-muted">Tapşırıq yoxdur.</p>
+            {companyRows.length === 0 ? (
+              <p className="dashboard-muted">Məlumat yoxdur.</p>
+            ) : (
+              companyRows.map((company) => (
+                <div className="dashboard-list-item" key={company.id}>
+                  <strong>{company.name}</strong>
+                  <span>{company.total} inventar</span>
+                  <small>
+                    Təhkim: {company.assigned} · Anbar: {company.inStock} ·
+                    Təmir: {company.inRepair}
+                  </small>
+                </div>
+              ))
             )}
           </div>
+        </div>
+      </section>
+
+      <section className="dashboard-card" style={{ marginTop: 18 }}>
+        <div className="dashboard-card-head">
+          <h2>Son əlavə edilən inventarlar</h2>
+          <span>Top 10</span>
+        </div>
+
+        <div className="dashboard-list">
+          {latestItems.length === 0 ? (
+            <p className="dashboard-muted">Inventar tapılmadı.</p>
+          ) : (
+            latestItems.map((item) => (
+              <div className="dashboard-list-item" key={item.id}>
+                <strong>
+                  {item.name ||
+                    item.item_name ||
+                    item.title ||
+                    item.inventory_name ||
+                    "Adsız inventar"}
+                </strong>
+
+                <span>{humanizeStatus(item.status)}</span>
+
+                <small>
+                  {companyMap.get(String(item.company_id || "")) ||
+                    "Şirkət seçilməyib"}{" "}
+                  · {item.inventory_code || item.serial_number || item.code || "-"}
+                </small>
+              </div>
+            ))
+          )}
         </div>
       </section>
     </main>
@@ -188,9 +398,26 @@ function ChartRow({ label, value, max }) {
         <span>{label}</span>
         <strong>{value}</strong>
       </div>
+
       <div className="dashboard-bar">
         <div style={{ width: `${width}%` }} />
       </div>
     </div>
   );
+}
+
+function humanizeStatus(status) {
+  const value = String(status || "").toUpperCase();
+
+  const map = {
+    ASSIGNED: "Təhkim olunub",
+    IN_STOCK: "Anbarda",
+    IN_REPAIR: "Təmirdə",
+    LOST: "İtib",
+    BROKEN: "Sınıq",
+    RETIRED: "Silinib",
+    UNKNOWN: "Bilinmir",
+  };
+
+  return map[value] || status || "-";
 }

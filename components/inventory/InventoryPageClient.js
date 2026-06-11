@@ -49,39 +49,95 @@ const ROLE_NAMES = {
   REHBER: "REHBER",
   USER: "USER",
   IZLEYICI: "IZLEYICI",
+  VIEWER: "VIEWER",
   AUDIT: "AUDIT",
 };
 
 function normalizeRole(role) {
-  return String(role || "USER").toUpperCase();
+  const value = String(role || "")
+    .trim()
+    .toUpperCase();
+
+  if (value === "ADMIN") return ROLE_NAMES.ADMIN;
+
+  if (
+    value === "REHBER" ||
+    value === "RƏHBƏR" ||
+    value === "REHBƏR" ||
+    value === "RƏHBER"
+  ) {
+    return ROLE_NAMES.REHBER;
+  }
+
+  if (value === "AUDIT" || value === "AUDITOR" || value === "AUDİT") {
+    return ROLE_NAMES.AUDIT;
+  }
+
+  if (
+    value === "IZLEYICI" ||
+    value === "İZLEYICI" ||
+    value === "İZLƏYİCİ" ||
+    value === "IZLƏYICI" ||
+    value === "VIEWER"
+  ) {
+    return ROLE_NAMES.IZLEYICI;
+  }
+
+  if (
+    value === "USER" ||
+    value === "İSTİFADƏÇİ" ||
+    value === "ISTIFADECI"
+  ) {
+    return ROLE_NAMES.USER;
+  }
+
+  return value || ROLE_NAMES.USER;
+}
+
+function resolveProfileRole(profile) {
+  return normalizeRole(
+    profile?.resolved_role ||
+      profile?.user_role ||
+      profile?.roles?.name ||
+      profile?.roles?.label ||
+      "USER"
+  );
 }
 
 function canViewInventory(role) {
-  return ["ADMIN", "REHBER", "IZLEYICI", "AUDIT"].includes(
-    normalizeRole(role)
-  );
+  return [
+    ROLE_NAMES.ADMIN,
+    ROLE_NAMES.REHBER,
+    ROLE_NAMES.IZLEYICI,
+    ROLE_NAMES.VIEWER,
+    ROLE_NAMES.AUDIT,
+  ].includes(normalizeRole(role));
 }
 
 function canCreateInventory(role) {
-  return ["ADMIN", "REHBER"].includes(normalizeRole(role));
+  return [ROLE_NAMES.ADMIN, ROLE_NAMES.REHBER].includes(normalizeRole(role));
 }
 
 function canEditInventory(role) {
-  return ["ADMIN", "REHBER"].includes(normalizeRole(role));
+  return [ROLE_NAMES.ADMIN, ROLE_NAMES.REHBER].includes(normalizeRole(role));
 }
 
 function canDeleteInventory(role) {
-  return normalizeRole(role) === "ADMIN";
+  return normalizeRole(role) === ROLE_NAMES.ADMIN;
 }
 
 function canViewReports(role) {
-  return ["ADMIN", "REHBER", "IZLEYICI", "AUDIT"].includes(
-    normalizeRole(role)
-  );
+  return [
+    ROLE_NAMES.ADMIN,
+    ROLE_NAMES.REHBER,
+    ROLE_NAMES.IZLEYICI,
+    ROLE_NAMES.VIEWER,
+    ROLE_NAMES.AUDIT,
+  ].includes(normalizeRole(role));
 }
 
 function canManageQr(role) {
-  return ["ADMIN", "REHBER"].includes(normalizeRole(role));
+  return [ROLE_NAMES.ADMIN, ROLE_NAMES.REHBER].includes(normalizeRole(role));
 }
 
 function isAdmin(role) {
@@ -818,8 +874,8 @@ export default function InventoryPageClient() {
   const [optionCategories, setOptionCategories] = useState([]);
   const [optionProfiles, setOptionProfiles] = useState([]);
 
-  const currentRole = normalizeRole(me?.roles?.name || me?.role || "USER");
-  const currentCompanyId = me?.company_id || me?.companies?.id || "";
+  const currentRole = resolveProfileRole(me);
+const currentCompanyId = me?.company_id || me?.companies?.id || "";
 
   const allowViewInventory = canViewInventory(currentRole);
   const allowCreateInventory = canCreateInventory(currentRole);
@@ -918,25 +974,28 @@ export default function InventoryPageClient() {
     }
 
     const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select(
-        `
-        id,
-        full_name,
-        email,
-        company_id,
-        status,
-        roles (
-          id,
-          name,
-          label
-        ),
-        companies (
-          id,
-          name
-        )
-      `
-      )
+  .from("profiles")
+  .select(
+    `
+    id,
+    full_name,
+    email,
+    company_id,
+    status,
+    user_role,
+    role_id,
+    access_scope,
+    roles (
+      id,
+      name,
+      label
+    ),
+    companies (
+      id,
+      name
+    )
+  `
+  )
       .eq("id", user.id)
       .maybeSingle();
 
@@ -944,14 +1003,51 @@ export default function InventoryPageClient() {
       console.error("CURRENT PROFILE LOAD ERROR:", profileError);
     }
 
-    setMe(profile || null);
-    return profile || null;
+    if (!profile) {
+  setMe(null);
+  return null;
+}
+
+let finalProfile = { ...profile };
+let resolvedRole = resolveProfileRole(finalProfile);
+
+if (finalProfile.user_role && !finalProfile.roles) {
+  const { data: roleRow, error: roleError } = await supabase
+    .from("roles")
+    .select("id,name,label")
+    .eq("name", normalizeRole(finalProfile.user_role))
+    .maybeSingle();
+
+  if (!roleError && roleRow) {
+    finalProfile = {
+      ...finalProfile,
+      role_id: roleRow.id,
+      roles: roleRow,
+    };
+
+    resolvedRole = normalizeRole(roleRow.name);
+  } else if (roleError) {
+    console.warn("INVENTORY ROLE READ WARNING:", {
+      message: roleError.message,
+      details: roleError.details,
+      hint: roleError.hint,
+      code: roleError.code,
+    });
+  }
+}
+
+finalProfile = {
+  ...finalProfile,
+  resolved_role: resolvedRole,
+  resolved_role_label: finalProfile?.roles?.label || resolvedRole,
+};
+
+setMe(finalProfile);
+return finalProfile;
   }
 
   async function loadItems(profileArg = me) {
-    const role = normalizeRole(
-      profileArg?.roles?.name || profileArg?.role || "USER"
-    );
+    const role = resolveProfileRole(profileArg);
     const companyId = profileArg?.company_id || profileArg?.companies?.id || "";
 
     if (!canViewInventory(role)) {
@@ -1023,9 +1119,7 @@ export default function InventoryPageClient() {
   }
 
   async function loadOptions(profileArg = me) {
-    const role = normalizeRole(
-      profileArg?.roles?.name || profileArg?.role || "USER"
-    );
+    const role = resolveProfileRole(profileArg);
     const companyId = profileArg?.company_id || profileArg?.companies?.id || "";
 
     const companiesQuery = supabase
@@ -1747,7 +1841,7 @@ export default function InventoryPageClient() {
             <h1>İcazə yoxdur</h1>
             <p>
               Bu səhifəyə baxmaq üçün rol icazəniz yoxdur. İnventar idarəetməsi
-              yalnız ADMIN, REHBER, IZLEYICI və AUDIT rolları üçündür.
+              yalnız ADMIN, REHBER, IZLEYICI, VIEWER və AUDIT rolları üçündür.
             </p>
           </div>
         </section>

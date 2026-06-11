@@ -44,14 +44,6 @@ export default function DashboardRouter() {
 
       setAuthUser(user);
 
-      /**
-       * Vacib:
-       * Burada relation istifadə etmirik:
-       * roles:role_id (...)
-       *
-       * Çünki səndə foreign key adı fərqli ola bilər.
-       * Əvvəl profiles-i sadə oxuyuruq.
-       */
       const { data: profileRow, error: profileError } = await supabase
         .from("profiles")
         .select("*")
@@ -80,17 +72,19 @@ export default function DashboardRouter() {
         return;
       }
 
-      let foundRole = profileRow?.role || "";
+      let foundRole =
+        profileRow?.user_role ||
+        profileRow?.role ||
+        profileRow?.role_name ||
+        profileRow?.type ||
+        "";
+
       let foundAccessScope = profileRow?.access_scope || "OWN_COMPANY";
 
-      /**
-       * Əgər profiles.role_id varsa, roles cədvəlindən role name oxumağa çalışırıq.
-       * Əgər alınmasa, xəta vermirik, profile.role ilə davam edirik.
-       */
       if (profileRow?.role_id) {
         const { data: roleRow, error: roleError } = await supabase
           .from("roles")
-          .select("id, name")
+          .select("id, name, label")
           .eq("id", profileRow.role_id)
           .maybeSingle();
 
@@ -170,9 +164,6 @@ export default function DashboardRouter() {
         companyIds.add(profile.company_id);
       }
 
-      /**
-       * user_company_access table hələ yoxdursa belə dashboard çökməsin.
-       */
       const { data: accessRows, error: accessError } = await supabase
         .from("user_company_access")
         .select("company_id, access_type")
@@ -315,7 +306,9 @@ function normalizeRole(role) {
     return "VIEWER";
   }
 
-  if (value === "USER") return "USER";
+  if (value === "USER" || value === "İSTİFADƏÇİ" || value === "ISTIFADECI") {
+    return "USER";
+  }
 
   return value || "USER";
 }

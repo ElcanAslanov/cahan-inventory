@@ -8,6 +8,7 @@ const ROLES = {
   REHBER: "REHBER",
   USER: "USER",
   IZLEYICI: "IZLEYICI",
+  VIEWER: "VIEWER",
   AUDIT: "AUDIT",
 };
 
@@ -24,6 +25,7 @@ const MENU = [
           ROLES.REHBER,
           ROLES.USER,
           ROLES.IZLEYICI,
+          ROLES.VIEWER,
           ROLES.AUDIT,
         ],
       },
@@ -31,7 +33,13 @@ const MENU = [
         label: "İnventarlar",
         href: "/dashboard/inventory",
         icon: "◈",
-        roles: [ROLES.ADMIN, ROLES.REHBER, ROLES.IZLEYICI, ROLES.AUDIT],
+        roles: [
+          ROLES.ADMIN,
+          ROLES.REHBER,
+          ROLES.IZLEYICI,
+          ROLES.VIEWER,
+          ROLES.AUDIT,
+        ],
       },
       {
         label: "Mənim inventarlarım",
@@ -84,16 +92,50 @@ const MENU = [
 ];
 
 function normalizeRole(role) {
-  return String(role || ROLES.USER).trim().toUpperCase();
+  const value = String(role || "").trim().toUpperCase();
+
+  if (value === "ADMIN") return ROLES.ADMIN;
+
+  if (
+    value === "REHBER" ||
+    value === "RƏHBƏR" ||
+    value === "REHBƏR" ||
+    value === "RƏHBER"
+  ) {
+    return ROLES.REHBER;
+  }
+
+  if (value === "AUDIT" || value === "AUDITOR" || value === "AUDİT") {
+    return ROLES.AUDIT;
+  }
+
+  if (
+    value === "IZLEYICI" ||
+    value === "İZLEYICI" ||
+    value === "İZLƏYİCİ" ||
+    value === "IZLƏYICI" ||
+    value === "VIEWER"
+  ) {
+    return ROLES.IZLEYICI;
+  }
+
+  if (
+    value === "USER" ||
+    value === "İSTİFADƏÇİ" ||
+    value === "ISTIFADECI"
+  ) {
+    return ROLES.USER;
+  }
+
+  return value || ROLES.USER;
 }
 
 function getCurrentRole(me, role) {
   return normalizeRole(
     role ||
-      me?.roles?.name ||
-      me?.role ||
+      me?.resolved_role ||
       me?.user_role ||
-      me?.role_name ||
+      me?.roles?.name ||
       ROLES.USER
   );
 }
@@ -106,6 +148,7 @@ function getRoleLabel(role) {
     [ROLES.REHBER]: "Rəhbər",
     [ROLES.USER]: "İstifadəçi",
     [ROLES.IZLEYICI]: "İzləyici",
+    [ROLES.VIEWER]: "İzləyici",
     [ROLES.AUDIT]: "Audit",
   };
 
@@ -134,6 +177,14 @@ function getInitials(value) {
   return text.slice(0, 1).toUpperCase();
 }
 
+function getDisplayName(me) {
+  return me?.full_name || me?.name || me?.display_name || me?.email || "User";
+}
+
+function getCompanyName(me) {
+  return me?.companies?.name || me?.company_name || me?.company?.name || "-";
+}
+
 export default function Sidebar({ me, role, open, onClose }) {
   const pathname = usePathname();
 
@@ -146,9 +197,9 @@ export default function Sidebar({ me, role, open, onClose }) {
     ),
   })).filter((group) => group.items.length > 0);
 
-  const displayName = me?.full_name || me?.email || "User";
-  const roleLabel = me?.roles?.label || getRoleLabel(currentRole);
-  const companyName = me?.companies?.name || me?.company_name || "-";
+  const displayName = getDisplayName(me);
+  const roleLabel = me?.resolved_role_label || getRoleLabel(currentRole);
+  const companyName = getCompanyName(me);
 
   return (
     <>

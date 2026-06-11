@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
+const ALLOWED_ROLES = ["ADMIN", "REHBER", "USER", "IZLEYICI", "VIEWER", "AUDIT"];
+
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -30,8 +32,14 @@ function normalizeEmail(value) {
 function normalizeRole(value) {
   const role = String(value || "USER").trim().toUpperCase();
 
-  if (["ADMIN", "REHBER", "USER"].includes(role)) {
-    return role;
+  if (role === "VIEWER") return "IZLEYICI";
+  if (role === "İZLEYICI") return "IZLEYICI";
+  if (role === "İZLƏYİCİ") return "IZLEYICI";
+  if (role === "AUDİT") return "AUDIT";
+  if (role === "RƏHBƏR") return "REHBER";
+
+  if (ALLOWED_ROLES.includes(role)) {
+    return role === "VIEWER" ? "IZLEYICI" : role;
   }
 
   return "USER";
@@ -62,6 +70,16 @@ function normalizeCompanyId(value) {
   return companyId || null;
 }
 
+function normalizeDepartmentId(value) {
+  const departmentId = String(value || "").trim();
+  return departmentId || null;
+}
+
+function normalizeRoleId(value) {
+  const roleId = String(value || "").trim();
+  return roleId || null;
+}
+
 function errorResponse(message, status = 500) {
   return NextResponse.json(
     {
@@ -73,13 +91,100 @@ function errorResponse(message, status = 500) {
   );
 }
 
+async function resolveRolePayload(supabase, body) {
+  const incomingRoleId = normalizeRoleId(body.role_id);
+  const incomingRole = normalizeRole(body.user_role || body.role || "");
+
+  if (incomingRoleId) {
+    const { data: roleRow, error: roleError } = await supabase
+      .from("roles")
+      .select("id,name,label")
+      .eq("id", incomingRoleId)
+      .maybeSingle();
+
+    if (roleError) {
+      throw new Error(roleError.message || "Rol oxunarkən xəta baş verdi.");
+    }
+
+    if (!roleRow?.id) {
+      throw new Error("Seçilmiş rol tapılmadı.");
+    }
+
+    return {
+      role_id: roleRow.id,
+      user_role: normalizeRole(roleRow.name),
+      role: roleRow,
+    };
+  }
+
+  const { data: roleRow, error: roleError } = await supabase
+    .from("roles")
+    .select("id,name,label")
+    .eq("name", incomingRole)
+    .maybeSingle();
+
+  if (roleError) {
+    throw new Error(roleError.message || "Rol oxunarkən xəta baş verdi.");
+  }
+
+  return {
+    role_id: roleRow?.id || null,
+    user_role: incomingRole,
+    role: roleRow || null,
+  };
+}
+
+async function validateCompanyDepartment(supabase, companyId, departmentId) {
+  if (!departmentId) return;
+
+  if (!companyId) {
+    throw new Error("Departament seçmək üçün əvvəl şirkət seçilməlidir.");
+  }
+
+  const { data: department, error } = await supabase
+    .from("departments")
+    .select("id,company_id")
+    .eq("id", departmentId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || "Departament yoxlanarkən xəta baş verdi.");
+  }
+
+  if (!department?.id) {
+    throw new Error("Seçilmiş departament tapılmadı.");
+  }
+
+  if (String(department.company_id) !== String(companyId)) {
+    throw new Error("Seçilmiş departament bu şirkətə aid deyil.");
+  }
+}
+
 export async function GET() {
   try {
     const supabase = getAdminClient();
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("*")
+      .select(
+        `
+        *,
+        roles (
+          id,
+          name,
+          label
+        ),
+        companies (
+          id,
+          name
+        ),
+        departments (
+          id,
+          name,
+          company_id
+        )
+      `
+      )
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -103,10 +208,10 @@ export async function POST(req) {
     const full_name = normalizeString(body.full_name);
     const email = normalizeEmail(body.email);
     const password = normalizeString(body.password);
-    const user_role = normalizeRole(body.user_role);
     const status = normalizeStatus(body.status);
     const access_scope = normalizeAccessScope(body.access_scope);
     const company_id = normalizeCompanyId(body.company_id);
+    const department_id = normalizeDepartmentId(body.department_id);
 
     if (!full_name) {
       return errorResponse("Ad soyad məcburidir.", 400);
@@ -121,6 +226,10 @@ export async function POST(req) {
     }
 
     const supabase = getAdminClient();
+
+    await validateCompanyDepartment(supabase, company_id, department_id);
+
+    const rolePayload = await resolveRolePayload(supabase, body);
 
     const { data: existingProfile, error: existingProfileError } =
       await supabase
@@ -144,6 +253,10 @@ export async function POST(req) {
         email_confirm: true,
         user_metadata: {
           full_name,
+          user_role: rolePayload.user_role,
+          role_id: rolePayload.role_id,
+          company_id,
+          department_id,
         },
       });
 
@@ -161,23 +274,42 @@ export async function POST(req) {
       return errorResponse("Auth user ID tapılmadı.", 500);
     }
 
+    const profilePayload = {
+      id: userId,
+      full_name,
+      email,
+      user_role: rolePayload.user_role,
+      role_id: rolePayload.role_id,
+      status,
+      access_scope,
+      company_id,
+      department_id,
+    };
+
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .upsert(
-        {
-          id: userId,
-          full_name,
-          email,
-          user_role,
-          status,
-          access_scope,
-          company_id,
-        },
-        {
-          onConflict: "id",
-        }
+      .upsert(profilePayload, {
+        onConflict: "id",
+      })
+      .select(
+        `
+        *,
+        roles (
+          id,
+          name,
+          label
+        ),
+        companies (
+          id,
+          name
+        ),
+        departments (
+          id,
+          name,
+          company_id
+        )
+      `
       )
-      .select("*")
       .single();
 
     if (profileError) {
@@ -214,10 +346,10 @@ export async function PUT(req) {
     const full_name = normalizeString(body.full_name);
     const email = normalizeEmail(body.email);
     const password = normalizeString(body.password);
-    const user_role = normalizeRole(body.user_role);
     const status = normalizeStatus(body.status);
     const access_scope = normalizeAccessScope(body.access_scope);
     const company_id = normalizeCompanyId(body.company_id);
+    const department_id = normalizeDepartmentId(body.department_id);
 
     if (!id) {
       return errorResponse("İstifadəçi ID tapılmadı.", 400);
@@ -236,6 +368,10 @@ export async function PUT(req) {
     }
 
     const supabase = getAdminClient();
+
+    await validateCompanyDepartment(supabase, company_id, department_id);
+
+    const rolePayload = await resolveRolePayload(supabase, body);
 
     const { data: currentProfile, error: currentProfileError } = await supabase
       .from("profiles")
@@ -270,6 +406,10 @@ export async function PUT(req) {
       email,
       user_metadata: {
         full_name,
+        user_role: rolePayload.user_role,
+        role_id: rolePayload.role_id,
+        company_id,
+        department_id,
       },
     };
 
@@ -288,18 +428,40 @@ export async function PUT(req) {
       );
     }
 
+    const profilePayload = {
+      full_name,
+      email,
+      user_role: rolePayload.user_role,
+      role_id: rolePayload.role_id,
+      status,
+      access_scope,
+      company_id,
+      department_id,
+    };
+
     const { data, error } = await supabase
       .from("profiles")
-      .update({
-        full_name,
-        email,
-        user_role,
-        status,
-        access_scope,
-        company_id,
-      })
+      .update(profilePayload)
       .eq("id", id)
-      .select("*")
+      .select(
+        `
+        *,
+        roles (
+          id,
+          name,
+          label
+        ),
+        companies (
+          id,
+          name
+        ),
+        departments (
+          id,
+          name,
+          company_id
+        )
+      `
+      )
       .single();
 
     if (error) {

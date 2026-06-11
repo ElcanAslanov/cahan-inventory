@@ -21,6 +21,12 @@ const CONDITION_OPTIONS = [
   { value: "UNUSABLE", label: "Yararsız" },
 ];
 
+const RESPONSIBLE_MODE_OPTIONS = [
+  { value: "NONE", label: "Təhkim edilməyib" },
+  { value: "SYSTEM_USER", label: "Sistemdə olan istifadəçi" },
+  { value: "MANUAL", label: "Sistemdə olmayan məsul şəxs" },
+];
+
 const STEPS = [
   { key: "basic", label: "Əsas" },
   { key: "owner", label: "Təhkim" },
@@ -35,7 +41,10 @@ const INITIAL_FORM = {
   company_id: "",
   department_id: "",
   category_id: "",
+  responsible_mode: "NONE",
   responsible_user_id: "",
+  responsible_person_name: "",
+  responsible_person_note: "",
   current_location: "",
   purchase_date: "",
   purchase_price: "",
@@ -53,7 +62,47 @@ const INITIAL_FORM = {
 };
 
 function normalizeRole(role) {
-  return String(role || "USER").toUpperCase();
+  const value = String(role || "").trim().toUpperCase();
+
+  if (value === "ADMIN") return "ADMIN";
+
+  if (
+    value === "REHBER" ||
+    value === "RƏHBƏR" ||
+    value === "REHBƏR" ||
+    value === "RƏHBER"
+  ) {
+    return "REHBER";
+  }
+
+  if (value === "USER" || value === "İSTİFADƏÇİ" || value === "ISTIFADECI") {
+    return "USER";
+  }
+
+  if (
+    value === "IZLEYICI" ||
+    value === "İZLEYICI" ||
+    value === "İZLƏYİCİ" ||
+    value === "VIEWER"
+  ) {
+    return "IZLEYICI";
+  }
+
+  if (value === "AUDIT" || value === "AUDİT" || value === "AUDITOR") {
+    return "AUDIT";
+  }
+
+  return value || "USER";
+}
+
+function resolveProfileRole(profile) {
+  return normalizeRole(
+    profile?.resolved_role ||
+      profile?.user_role ||
+      profile?.roles?.name ||
+      profile?.roles?.label ||
+      "USER"
+  );
 }
 
 function canCreateInventory(role) {
@@ -87,10 +136,14 @@ function createSafeFileName(fileName) {
     .replace(/[^a-zA-Z0-9._-]/g, "");
 }
 
+function cleanInitialForm() {
+  return { ...INITIAL_FORM };
+}
+
 export default function InventoryCreateModal({ open, onClose, onCreated }) {
   const [mounted, setMounted] = useState(false);
   const [activeStep, setActiveStep] = useState("basic");
-  const [form, setForm] = useState(INITIAL_FORM);
+  const [form, setForm] = useState(cleanInitialForm());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [optionsLoading, setOptionsLoading] = useState(false);
@@ -104,7 +157,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
   const [imageFiles, setImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
 
-  const currentRole = normalizeRole(me?.roles?.name || me?.role || "USER");
+  const currentRole = resolveProfileRole(me);
   const currentCompanyId = me?.company_id || me?.companies?.id || "";
 
   const canCreate = canCreateInventory(currentRole);
@@ -119,9 +172,11 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
     if (!open) return;
 
     setActiveStep("basic");
-    setForm(INITIAL_FORM);
+    setForm(cleanInitialForm());
     setError("");
+    setSaving(false);
     setImageFiles([]);
+
     setImagePreviews((prev) => {
       prev.forEach((image) => {
         if (image?.url) URL.revokeObjectURL(image.url);
@@ -165,6 +220,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
 
   async function loadOptions() {
     setOptionsLoading(true);
+    setError("");
 
     const {
       data: { user },
@@ -187,6 +243,9 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
         email,
         company_id,
         status,
+        user_role,
+        role_id,
+        access_scope,
         roles (
           id,
           name,
@@ -209,10 +268,15 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       return;
     }
 
-    setMe(profile);
-
-    const role = normalizeRole(profile?.roles?.name || profile?.role || "USER");
+    const role = resolveProfileRole(profile);
     const companyId = profile?.company_id || profile?.companies?.id || "";
+
+    const finalProfile = {
+      ...profile,
+      resolved_role: role,
+    };
+
+    setMe(finalProfile);
 
     if (!canCreateInventory(role)) {
       setError(
@@ -226,34 +290,28 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       return;
     }
 
-    const companyQuery = supabase
+    let companyQuery = supabase
       .from("companies")
       .select("id,name,status")
       .eq("status", "ACTIVE")
       .order("name");
 
-    if (isRehber(role) && companyId) {
-      companyQuery.eq("id", companyId);
-    }
-
-    const departmentQuery = supabase
+    let departmentQuery = supabase
       .from("departments")
       .select("id,name,company_id,status")
       .eq("status", "ACTIVE")
       .order("name");
 
-    if (isRehber(role) && companyId) {
-      departmentQuery.eq("company_id", companyId);
-    }
-
-    const profileQuery = supabase
+    let profileQuery = supabase
       .from("profiles")
-      .select("id,full_name,email,company_id,status")
+      .select("id,full_name,email,company_id,department_id,status")
       .eq("status", "ACTIVE")
       .order("full_name");
 
     if (isRehber(role) && companyId) {
-      profileQuery.eq("company_id", companyId);
+      companyQuery = companyQuery.eq("id", companyId);
+      departmentQuery = departmentQuery.eq("company_id", companyId);
+      profileQuery = profileQuery.eq("company_id", companyId);
     }
 
     const [companiesRes, departmentsRes, categoriesRes, profilesRes] =
@@ -291,12 +349,16 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
         company_id: companyId,
         department_id:
           prev.department_id &&
-          nextDepartments.some((dept) => dept.id === prev.department_id)
+          nextDepartments.some(
+            (department) => String(department.id) === String(prev.department_id)
+          )
             ? prev.department_id
             : "",
         responsible_user_id:
           prev.responsible_user_id &&
-          nextProfiles.some((person) => person.id === prev.responsible_user_id)
+          nextProfiles.some(
+            (person) => String(person.id) === String(prev.responsible_user_id)
+          )
             ? prev.responsible_user_id
             : "",
       }));
@@ -306,19 +368,48 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
   }
 
   const filteredDepartments = useMemo(() => {
-    if (!form.company_id) return departments;
-    return departments.filter((item) => item.company_id === form.company_id);
+    if (!form.company_id) return [];
+    return departments.filter(
+      (item) => String(item.company_id) === String(form.company_id)
+    );
   }, [departments, form.company_id]);
 
   const filteredProfiles = useMemo(() => {
-    if (!form.company_id) return profiles;
-    return profiles.filter((item) => item.company_id === form.company_id);
-  }, [profiles, form.company_id]);
+    if (!form.company_id) return [];
 
-  const selectedCompany = companies.find((x) => x.id === form.company_id);
-  const selectedResponsible = profiles.find(
-    (x) => x.id === form.responsible_user_id
+    let list = profiles.filter(
+      (item) => String(item.company_id) === String(form.company_id)
+    );
+
+    if (form.department_id) {
+      list = list.filter(
+        (item) =>
+          !item.department_id ||
+          String(item.department_id) === String(form.department_id)
+      );
+    }
+
+    return list;
+  }, [profiles, form.company_id, form.department_id]);
+
+  const selectedCompany = companies.find(
+    (x) => String(x.id) === String(form.company_id)
   );
+
+  const selectedDepartment = departments.find(
+    (x) => String(x.id) === String(form.department_id)
+  );
+
+  const selectedResponsible = profiles.find(
+    (x) => String(x.id) === String(form.responsible_user_id)
+  );
+
+  const hasAnyResponsible =
+    form.responsible_mode === "SYSTEM_USER"
+      ? Boolean(form.responsible_user_id)
+      : form.responsible_mode === "MANUAL"
+        ? Boolean(form.responsible_person_name.trim())
+        : false;
 
   function setField(name, value) {
     setForm((prev) => {
@@ -327,6 +418,39 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       if (name === "company_id") {
         next.department_id = "";
         next.responsible_user_id = "";
+      }
+
+      if (name === "department_id") {
+        next.responsible_user_id = "";
+      }
+
+      if (name === "responsible_mode") {
+        if (value === "NONE") {
+          next.responsible_user_id = "";
+          next.responsible_person_name = "";
+          next.responsible_person_note = "";
+          next.status = "IN_STOCK";
+        }
+
+        if (value === "SYSTEM_USER") {
+          next.responsible_person_name = "";
+          next.responsible_person_note = "";
+        }
+
+        if (value === "MANUAL") {
+          next.responsible_user_id = "";
+        }
+      }
+
+      if (name === "responsible_user_id" && value) {
+        next.responsible_person_name = "";
+        next.responsible_person_note = "";
+        next.status = "ASSIGNED";
+      }
+
+      if (name === "responsible_person_name" && String(value || "").trim()) {
+        next.responsible_user_id = "";
+        next.status = "ASSIGNED";
       }
 
       return next;
@@ -445,6 +569,19 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
         setError("REHBER üçün şirkət məlumatı məcburidir.");
         return false;
       }
+
+      if (form.responsible_mode === "SYSTEM_USER" && !form.responsible_user_id) {
+        setError("Sistemdə olan məsul şəxsi seçin.");
+        return false;
+      }
+
+      if (
+        form.responsible_mode === "MANUAL" &&
+        !form.responsible_person_name.trim()
+      ) {
+        setError("Sistemdə olmayan məsul şəxs üçün ad soyad yazın.");
+        return false;
+      }
     }
 
     setError("");
@@ -515,9 +652,29 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       return;
     }
 
-    if (rehberMode && form.company_id !== currentCompanyId) {
+    if (rehberMode && String(form.company_id) !== String(currentCompanyId)) {
       setActiveStep("owner");
       setError("REHBER yalnız öz şirkəti üçün inventar əlavə edə bilər.");
+      setSaving(false);
+      return;
+    }
+
+    if (
+      form.responsible_mode === "SYSTEM_USER" &&
+      !form.responsible_user_id
+    ) {
+      setActiveStep("owner");
+      setError("Sistemdə olan məsul şəxsi seçin.");
+      setSaving(false);
+      return;
+    }
+
+    if (
+      form.responsible_mode === "MANUAL" &&
+      !form.responsible_person_name.trim()
+    ) {
+      setActiveStep("owner");
+      setError("Sistemdə olmayan məsul şəxs üçün ad soyad yazın.");
       setSaving(false);
       return;
     }
@@ -530,7 +687,21 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       company_id: form.company_id || null,
       department_id: form.department_id || null,
       category_id: form.category_id || null,
-      responsible_user_id: form.responsible_user_id || null,
+
+      responsible_user_id:
+        form.responsible_mode === "SYSTEM_USER"
+          ? form.responsible_user_id || null
+          : null,
+
+      responsible_person_name:
+        form.responsible_mode === "MANUAL"
+          ? form.responsible_person_name.trim() || null
+          : null,
+
+      responsible_person_note:
+        form.responsible_mode === "MANUAL"
+          ? form.responsible_person_note.trim() || null
+          : null,
 
       current_location: form.current_location.trim() || null,
 
@@ -542,7 +713,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       model: form.model.trim() || null,
       brand: form.brand.trim() || null,
 
-      status: form.responsible_user_id ? "ASSIGNED" : form.status,
+      status: hasAnyResponsible ? "ASSIGNED" : form.status,
       condition: form.condition || "GOOD",
 
       warranty_start_date: toDateOrNull(form.warranty_start_date),
@@ -682,7 +853,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
               <div>
                 <span>Status</span>
                 <strong>
-                  {form.responsible_user_id
+                  {hasAnyResponsible
                     ? "Təhkim"
                     : STATUS_OPTIONS.find((x) => x.value === form.status)
                         ?.label}
@@ -695,8 +866,26 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
               </div>
 
               <div>
+                <span>Departament</span>
+                <strong>{selectedDepartment?.name || "Seçilməyib"}</strong>
+              </div>
+
+              <div>
+                <span>Məsul</span>
+                <strong>
+                  {form.responsible_mode === "SYSTEM_USER"
+                    ? selectedResponsible?.full_name || "Seçilməyib"
+                    : form.responsible_mode === "MANUAL"
+                      ? form.responsible_person_name || "Manual"
+                      : "Yoxdur"}
+                </strong>
+              </div>
+
+              <div>
                 <span>Şəkil</span>
-                <strong>{imageFiles.length ? `${imageFiles.length} ədəd` : "Yoxdur"}</strong>
+                <strong>
+                  {imageFiles.length ? `${imageFiles.length} ədəd` : "Yoxdur"}
+                </strong>
               </div>
             </div>
 
@@ -858,7 +1047,11 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       }
                       disabled={!canCreate || saving || !form.company_id}
                     >
-                      <option value="">Seçilməyib</option>
+                      <option value="">
+                        {form.company_id
+                          ? "Seçilməyib"
+                          : "Əvvəl şirkət seçin"}
+                      </option>
                       {filteredDepartments.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.name}
@@ -882,22 +1075,71 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                     </select>
                   </Field>
 
-                  <Field label="Məsul şəxs">
+                  <Field label="Məsul şəxs tipi">
                     <select
-                      value={form.responsible_user_id}
+                      value={form.responsible_mode}
                       onChange={(e) =>
-                        setField("responsible_user_id", e.target.value)
+                        setField("responsible_mode", e.target.value)
                       }
-                      disabled={!canCreate || saving || !form.company_id}
+                      disabled={!canCreate || saving}
                     >
-                      <option value="">Təhkim edilməyib</option>
-                      {filteredProfiles.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.full_name} {item.email ? `(${item.email})` : ""}
+                      {RESPONSIBLE_MODE_OPTIONS.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
                         </option>
                       ))}
                     </select>
                   </Field>
+
+                  {form.responsible_mode === "SYSTEM_USER" && (
+                    <Field label="Sistemdə olan məsul şəxs" wide>
+                      <select
+                        value={form.responsible_user_id}
+                        onChange={(e) =>
+                          setField("responsible_user_id", e.target.value)
+                        }
+                        disabled={!canCreate || saving || !form.company_id}
+                      >
+                        <option value="">
+                          {form.company_id
+                            ? "Məsul şəxs seçilməyib"
+                            : "Əvvəl şirkət seçin"}
+                        </option>
+                        {filteredProfiles.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.full_name} {item.email ? `(${item.email})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+
+                  {form.responsible_mode === "MANUAL" && (
+                    <>
+                      <Field label="Manual məsul şəxs adı *" wide>
+                        <input
+                          value={form.responsible_person_name}
+                          onChange={(e) =>
+                            setField("responsible_person_name", e.target.value)
+                          }
+                          placeholder="Məs: Əli Məmmədov"
+                          disabled={!canCreate || saving}
+                        />
+                      </Field>
+
+                      <Field label="Manual məsul şəxs qeydi" full>
+                        <textarea
+                          value={form.responsible_person_note}
+                          onChange={(e) =>
+                            setField("responsible_person_note", e.target.value)
+                          }
+                          placeholder="Məs: Sistemdə hesabı yoxdur, anbar əməkdaşıdır..."
+                          rows={3}
+                          disabled={!canCreate || saving}
+                        />
+                      </Field>
+                    </>
+                  )}
 
                   <Field label="Cari yerləşmə" wide>
                     <input
@@ -913,11 +1155,20 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                   <Field label="Seçilən məsul şəxs" full>
                     <div className="assetInlineInfo">
                       <strong>
-                        {selectedResponsible?.full_name || "Təyin edilməyib"}
+                        {form.responsible_mode === "SYSTEM_USER"
+                          ? selectedResponsible?.full_name || "Təyin edilməyib"
+                          : form.responsible_mode === "MANUAL"
+                            ? form.responsible_person_name ||
+                              "Manual məsul şəxs yazılmayıb"
+                            : "Təhkim edilməyib"}
                       </strong>
                       <span>
-                        {selectedResponsible?.email ||
-                          "Məsul şəxs seçilsə, status avtomatik təhkim olunub olacaq."}
+                        {form.responsible_mode === "SYSTEM_USER"
+                          ? selectedResponsible?.email ||
+                            "Sistemdə olan məsul şəxs seçilsə, status avtomatik təhkim olunub olacaq."
+                          : form.responsible_mode === "MANUAL"
+                            ? "Bu şəxs sistemə giriş edən istifadəçi deyil, sadəcə inventarın məsul şəxsi kimi saxlanacaq."
+                            : "Məsul şəxs seçilməsə status seçdiyiniz kimi qalacaq."}
                       </span>
                     </div>
                   </Field>
@@ -931,13 +1182,9 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                 >
                   <Field label="Status">
                     <select
-                      value={form.status}
+                      value={hasAnyResponsible ? "ASSIGNED" : form.status}
                       onChange={(e) => setField("status", e.target.value)}
-                      disabled={
-                        !canCreate ||
-                        saving ||
-                        Boolean(form.responsible_user_id)
-                      }
+                      disabled={!canCreate || saving || hasAnyResponsible}
                     >
                       {STATUS_OPTIONS.map((item) => (
                         <option key={item.value} value={item.value}>
@@ -2120,289 +2367,6 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
 
           .assetGhostBtn {
             grid-column: 1 / 2;
-          }
-        }
-
-        @media (max-width: 520px) {
-          .assetModalRoot {
-            padding: 6px;
-          }
-
-          .assetModal {
-            width: calc(100vw - 12px);
-            height: calc(100dvh - 12px);
-            max-height: calc(100dvh - 12px);
-            border-radius: 22px;
-          }
-
-          .assetSide {
-            height: 66px;
-            max-height: 66px;
-            padding: 7px 10px;
-          }
-
-          .assetLogoMark {
-            width: 32px;
-            height: 32px;
-            border-radius: 12px;
-          }
-
-          .assetCloseMobile {
-            width: 30px;
-            height: 30px;
-          }
-
-          .assetSideHero h2 {
-            font-size: 14px;
-          }
-
-          .assetFormHeader {
-            padding: 8px 10px 5px;
-          }
-
-          .assetFormHeader span {
-            font-size: 9px;
-          }
-
-          .assetFormHeader h3 {
-            font-size: 17px;
-          }
-
-          .assetStepTabs {
-            padding: 0 10px 6px;
-            gap: 5px;
-          }
-
-          .assetStepTabs button {
-            height: 31px;
-            border-radius: 11px;
-            font-size: 10px;
-          }
-
-          .assetStepTabs button i {
-            width: 17px;
-            height: 17px;
-            font-size: 9px;
-          }
-
-          .assetAlert {
-            margin: 0 10px 6px;
-          }
-
-          .assetPermissionBox {
-            margin: 0 10px 6px;
-          }
-
-          .assetFormBody {
-            padding: 0 10px 8px;
-          }
-
-          .assetGroup {
-            padding: 11px;
-            border-radius: 17px;
-          }
-
-          .assetGroupHead {
-            margin-bottom: 10px;
-            padding-bottom: 9px;
-          }
-
-          .assetGroupHead h4 {
-            font-size: 15px;
-          }
-
-          .assetGroupHead p {
-            font-size: 11px;
-          }
-
-          .assetField input,
-          .assetField select {
-            height: 36px;
-            border-radius: 12px;
-          }
-
-          .assetField textarea {
-            min-height: 68px;
-            border-radius: 12px;
-          }
-
-          .assetFooter {
-            padding: 7px 10px calc(7px + env(safe-area-inset-bottom));
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 7px;
-          }
-
-          .assetGhostBtn,
-          .assetSoftBtn,
-          .assetNextBtn,
-          .assetSaveBtn {
-            height: 36px;
-            border-radius: 12px;
-            font-size: 12px;
-          }
-        }
-
-        @media (max-width: 380px) {
-          .assetModalRoot {
-            padding: 4px;
-          }
-
-          .assetModal {
-            width: calc(100vw - 8px);
-            height: calc(100dvh - 8px);
-            max-height: calc(100dvh - 8px);
-            border-radius: 18px;
-          }
-
-          .assetSide {
-            height: 58px;
-            max-height: 58px;
-            padding: 6px 8px;
-          }
-
-          .assetSideHero h2 {
-            display: none;
-          }
-
-          .assetLogoMark {
-            width: 30px;
-            height: 30px;
-          }
-
-          .assetCloseMobile {
-            width: 28px;
-            height: 28px;
-          }
-
-          .assetFormHeader {
-            padding: 7px 8px 4px;
-          }
-
-          .assetFormHeader span {
-            display: none;
-          }
-
-          .assetFormHeader h3 {
-            font-size: 16px;
-          }
-
-          .assetStepTabs {
-            padding: 0 8px 5px;
-          }
-
-          .assetStepTabs button span {
-            display: none;
-          }
-
-          .assetStepTabs button {
-            height: 30px;
-          }
-
-          .assetFormBody {
-            padding: 0 8px 7px;
-          }
-
-          .assetFooter {
-            padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-            gap: 6px;
-          }
-
-          .assetGhostBtn,
-          .assetSoftBtn,
-          .assetNextBtn,
-          .assetSaveBtn {
-            height: 34px;
-            font-size: 11px;
-          }
-        }
-
-        @media (max-height: 700px) and (max-width: 900px) {
-          .assetSide {
-            height: 52px;
-            max-height: 52px;
-            padding: 5px 8px;
-          }
-
-          .assetSideHero {
-            display: none;
-          }
-
-          .assetLogoMark {
-            width: 30px;
-            height: 30px;
-          }
-
-          .assetCloseMobile {
-            width: 28px;
-            height: 28px;
-          }
-
-          .assetFormHeader {
-            padding: 6px 8px 4px;
-          }
-
-          .assetFormHeader span {
-            display: none;
-          }
-
-          .assetFormHeader h3 {
-            font-size: 16px;
-          }
-
-          .assetStepTabs {
-            padding: 0 8px 5px;
-          }
-
-          .assetStepTabs button {
-            height: 30px;
-          }
-
-          .assetStepTabs button span {
-            display: none;
-          }
-
-          .assetGroupHead p {
-            display: none;
-          }
-
-          .assetField input,
-          .assetField select {
-            height: 36px;
-          }
-
-          .assetField textarea {
-            min-height: 62px;
-          }
-
-          .assetFooter {
-            padding-top: 6px;
-            padding-bottom: calc(6px + env(safe-area-inset-bottom));
-          }
-
-          .assetGhostBtn,
-          .assetSoftBtn,
-          .assetNextBtn,
-          .assetSaveBtn {
-            height: 34px;
-          }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .assetModal,
-          .assetField input,
-          .assetField select,
-          .assetField textarea,
-          .assetCloseBtn,
-          .assetGhostBtn,
-          .assetSoftBtn,
-          .assetNextBtn,
-          .assetSaveBtn {
-            animation: none !important;
-            transition: none !important;
-          }
-
-          .assetModal {
-            transform: translate(var(--modal-x), var(--modal-y));
           }
         }
       `}</style>

@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import "@/styles/users.css";
 
-const ROLE_OPTIONS = [
+const FALLBACK_ROLE_OPTIONS = [
   { value: "ADMIN", label: "Admin" },
+  { value: "AUDIT", label: "Audit" },
+  { value: "IZLEYICI", label: "İzləyici" },
   { value: "REHBER", label: "Rəhbər" },
-  { value: "USER", label: "User" },
+  { value: "USER", label: "İstifadəçi" },
 ];
 
 const STATUS_OPTIONS = [
@@ -29,11 +31,55 @@ const EMPTY_FORM = {
   user_role: "USER",
   status: "ACTIVE",
   company_id: "",
+  department_id: "",
   access_scope: "OWN_COMPANY",
 };
 
 function normalizeText(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeRoleValue(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function formatRoleLabel(value) {
+  const role = normalizeRoleValue(value);
+
+  const map = {
+    ADMIN: "Admin",
+    AUDIT: "Audit",
+    IZLEYICI: "İzləyici",
+    VIEWER: "İzləyici",
+    REHBER: "Rəhbər",
+    USER: "İstifadəçi",
+  };
+
+  return map[role] || value || "-";
+}
+
+function buildRoleOptions(rows = []) {
+  const list = (rows || [])
+    .map((role) => {
+      const value = normalizeRoleValue(role.name);
+
+      if (!value) return null;
+
+      return {
+        id: role.id,
+        value,
+        label: role.label || formatRoleLabel(value),
+      };
+    })
+    .filter(Boolean);
+
+  const seen = new Set();
+
+  return list.filter((role) => {
+    if (seen.has(role.value)) return false;
+    seen.add(role.value);
+    return true;
+  });
 }
 
 function formatDate(value) {
@@ -100,10 +146,6 @@ function compareValues(a, b, direction) {
   return String(a).localeCompare(String(b), "az") * dir;
 }
 
-function getRoleLabel(value) {
-  return ROLE_OPTIONS.find((x) => x.value === value)?.label || value || "-";
-}
-
 function getStatusLabel(value) {
   return STATUS_OPTIONS.find((x) => x.value === value)?.label || value || "-";
 }
@@ -117,7 +159,7 @@ function getDisplayName(user) {
 }
 
 function getUserRole(user) {
-  return user.user_role || user.role || "USER";
+  return normalizeRoleValue(user.user_role || user.role || "USER");
 }
 
 function getUserStatus(user) {
@@ -126,6 +168,22 @@ function getUserStatus(user) {
 
 function getUserCompanyId(user) {
   return user.company_id || "";
+}
+
+function getUserDepartmentId(user) {
+  return user.department_id || user.departments?.id || "";
+}
+
+function getUserDepartmentDisplay(user, departmentMap) {
+  const id = String(getUserDepartmentId(user) || "");
+  return (
+    departmentMap?.get?.(id) ||
+    user.department_name ||
+    user.department ||
+    user.departments?.name ||
+    user.departmentName ||
+    "Departament seçilməyib"
+  );
 }
 
 function getUserAccessScope(user) {
@@ -157,6 +215,8 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [companies, setCompanies] = useState([]);
+const [departments, setDepartments] = useState([]);
+const [roleOptions, setRoleOptions] = useState(FALLBACK_ROLE_OPTIONS);
 
   const [search, setSearch] = useState("");
   const [selectedRoles, setSelectedRoles] = useState([]);
@@ -182,6 +242,11 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
+
+  function getRoleLabel(value) {
+    const role = normalizeRoleValue(value);
+    return roleOptions.find((x) => x.value === role)?.label || formatRoleLabel(role);
+  }
 
   useEffect(() => {
     loadInitialData();
@@ -213,17 +278,27 @@ export default function UsersPage() {
     setLoading(true);
 
     try {
-      const [usersRes, companiesRes] = await Promise.all([
-        fetch("/api/admin/users", {
-          method: "GET",
-          cache: "no-store",
-        }),
+    const [usersRes, companiesRes, departmentsRes, rolesRes] = await Promise.all([
+  fetch("/api/admin/users", {
+    method: "GET",
+    cache: "no-store",
+  }),
 
-        supabase
-          .from("companies")
-          .select("id,name,status")
-          .order("name", { ascending: true }),
-      ]);
+  supabase
+    .from("companies")
+    .select("id,name,status")
+    .order("name", { ascending: true }),
+
+  supabase
+    .from("departments")
+    .select("id,name,company_id,status")
+    .order("name", { ascending: true }),
+
+  supabase
+    .from("roles")
+    .select("id,name,label,created_at")
+    .order("name", { ascending: true }),
+]);
 
       const usersJson = await usersRes.json();
 
@@ -234,14 +309,36 @@ export default function UsersPage() {
       }
 
       if (companiesRes.error) throw companiesRes.error;
+if (departmentsRes.error) throw departmentsRes.error;
+
+      let nextRoleOptions = FALLBACK_ROLE_OPTIONS;
+
+      if (!rolesRes.error) {
+        const builtRoles = buildRoleOptions(rolesRes.data || []);
+
+        if (builtRoles.length > 0) {
+          nextRoleOptions = builtRoles;
+        }
+      } else {
+        console.warn("ROLES LOAD WARNING:", {
+          message: rolesRes.error.message,
+          details: rolesRes.error.details,
+          hint: rolesRes.error.hint,
+          code: rolesRes.error.code,
+        });
+      }
 
       setUsers(usersJson.users || []);
-      setCompanies(companiesRes.data || []);
+setCompanies(companiesRes.data || []);
+setDepartments(departmentsRes.data || []);
+setRoleOptions(nextRoleOptions);
     } catch (err) {
       console.error("USERS LOAD ERROR:", err);
       alert(err?.message || "İstifadəçilər yüklənərkən xəta baş verdi.");
       setUsers([]);
-      setCompanies([]);
+setCompanies([]);
+setDepartments([]);
+setRoleOptions(FALLBACK_ROLE_OPTIONS);
     } finally {
       setLoading(false);
     }
@@ -257,6 +354,31 @@ export default function UsersPage() {
     return map;
   }, [companies]);
 
+  const departmentMap = useMemo(() => {
+  const map = new Map();
+
+  departments.forEach((department) => {
+    map.set(String(department.id), department.name);
+  });
+
+  return map;
+}, [departments]);
+
+  const roleCounts = useMemo(() => {
+    const map = {};
+
+    roleOptions.forEach((role) => {
+      map[role.value] = 0;
+    });
+
+    users.forEach((user) => {
+      const role = getUserRole(user);
+      map[role] = (map[role] || 0) + 1;
+    });
+
+    return map;
+  }, [users, roleOptions]);
+
   const filteredUsers = useMemo(() => {
     const q = normalizeText(search);
 
@@ -265,7 +387,7 @@ export default function UsersPage() {
       const companyName = companyMap.get(companyId) || "";
       const role = getUserRole(user);
       const status = getUserStatus(user);
-      const departmentName = getUserDepartmentName(user);
+      const departmentName = getUserDepartmentDisplay(user, departmentMap);
 
       const matchesSearch =
         !q ||
@@ -306,6 +428,8 @@ export default function UsersPage() {
     createdFrom,
     createdTo,
     companyMap,
+departmentMap,
+roleOptions,
   ]);
 
   const sortedUsers = useMemo(() => {
@@ -335,6 +459,11 @@ export default function UsersPage() {
         bValue = companyMap.get(String(getUserCompanyId(b) || "")) || "";
       }
 
+      if (sortBy === "department") {
+  aValue = getUserDepartmentDisplay(a, departmentMap);
+  bValue = getUserDepartmentDisplay(b, departmentMap);
+}
+
       if (sortBy === "access_scope") {
         aValue = getAccessScopeLabel(getUserAccessScope(a));
         bValue = getAccessScopeLabel(getUserAccessScope(b));
@@ -344,7 +473,7 @@ export default function UsersPage() {
     });
 
     return list;
-  }, [filteredUsers, sortBy, sortDir, companyMap]);
+  }, [filteredUsers, sortBy, sortDir, companyMap, departmentMap, roleOptions]);
 
   const totalPages = Math.max(1, Math.ceil(sortedUsers.length / pageSize));
 
@@ -357,18 +486,12 @@ export default function UsersPage() {
   const summary = useMemo(() => {
     const active = users.filter((x) => getUserStatus(x) === "ACTIVE").length;
     const inactive = users.filter((x) => getUserStatus(x) === "INACTIVE").length;
-    const admins = users.filter((x) => getUserRole(x) === "ADMIN").length;
-    const rehbers = users.filter((x) => getUserRole(x) === "REHBER").length;
-    const normalUsers = users.filter((x) => getUserRole(x) === "USER").length;
 
     return {
       total: users.length,
       shown: filteredUsers.length,
       active,
       inactive,
-      admins,
-      rehbers,
-      normalUsers,
       activePercent: users.length ? Math.round((active / users.length) * 100) : 0,
       inactivePercent: users.length
         ? Math.round((inactive / users.length) * 100)
@@ -398,7 +521,7 @@ export default function UsersPage() {
       }
 
       const row = map.get(companyId);
-      const departmentName = getUserDepartmentName(user);
+      const departmentName = getUserDepartmentDisplay(user, departmentMap);
 
       row.total += 1;
 
@@ -409,20 +532,24 @@ export default function UsersPage() {
       }
 
       if (!row.departments.has(departmentName)) {
+        const emptyRoleMap = {};
+
+        roleOptions.forEach((role) => {
+          emptyRoleMap[role.value] = 0;
+        });
+
         row.departments.set(departmentName, {
           name: departmentName,
           total: 0,
-          roles: {
-            ADMIN: 0,
-            REHBER: 0,
-            USER: 0,
-          },
+          roles: emptyRoleMap,
         });
       }
 
       const dept = row.departments.get(departmentName);
+      const role = getUserRole(user);
+
       dept.total += 1;
-      dept.roles[getUserRole(user)] = (dept.roles[getUserRole(user)] || 0) + 1;
+      dept.roles[role] = (dept.roles[role] || 0) + 1;
     });
 
     return Array.from(map.values())
@@ -433,7 +560,7 @@ export default function UsersPage() {
         ),
       }))
       .sort((a, b) => b.total - a.total);
-  }, [users, companyMap]);
+  }, [users, companyMap, departmentMap, roleOptions]);
 
   const expandedCompany = useMemo(() => {
     if (!expandedCompanyId) return companyAnalytics[0] || null;
@@ -474,7 +601,13 @@ export default function UsersPage() {
 
   function openCreateModal() {
     setEditingUser(null);
-    setForm({ ...EMPTY_FORM });
+    setForm({
+      ...EMPTY_FORM,
+      user_role:
+        roleOptions.find((r) => r.value === "USER")?.value ||
+        roleOptions[0]?.value ||
+        "USER",
+    });
     setError("");
     setModalOpen(true);
   }
@@ -488,7 +621,10 @@ export default function UsersPage() {
       user_role: getUserRole(user),
       status: getUserStatus(user),
       company_id: getUserCompanyId(user) ? String(getUserCompanyId(user)) : "",
-      access_scope: getUserAccessScope(user),
+department_id: getUserDepartmentId(user)
+  ? String(getUserDepartmentId(user))
+  : "",
+access_scope: getUserAccessScope(user),
     });
     setError("");
     setModalOpen(true);
@@ -523,6 +659,11 @@ export default function UsersPage() {
       return;
     }
 
+    if (!form.user_role) {
+      setError("Rol seçilməlidir.");
+      return;
+    }
+
     if (!editingUser && (!password || password.length < 6)) {
       setError("Yeni istifadəçi üçün şifrə minimum 6 simvol olmalıdır.");
       return;
@@ -539,15 +680,16 @@ export default function UsersPage() {
     try {
       const headers = await getAuthHeaders();
 
-      const payload = {
-        id: editingUser?.id,
-        full_name: fullName,
-        email,
-        user_role: form.user_role,
-        status: form.status,
-        company_id: form.company_id || null,
-        access_scope: form.access_scope,
-      };
+     const payload = {
+  id: editingUser?.id,
+  full_name: fullName,
+  email,
+  user_role: form.user_role,
+  status: form.status,
+  company_id: form.company_id || null,
+  department_id: form.department_id || null,
+  access_scope: form.access_scope,
+};
 
       if (password) {
         payload.password = password;
@@ -619,6 +761,12 @@ export default function UsersPage() {
     setSortBy("created_at");
     setSortDir("desc");
     setPage(1);
+  }
+
+  function getDepartmentRoleText(dept) {
+    return roleOptions
+      .map((role) => `${role.label}: ${dept.roles?.[role.value] || 0}`)
+      .join(" · ");
   }
 
   return (
@@ -697,7 +845,7 @@ export default function UsersPage() {
             <div className="users-filter-section-title">Rollar</div>
 
             <div className="users-chip-row">
-              {ROLE_OPTIONS.map((role) => {
+              {roleOptions.map((role) => {
                 const selected = selectedRoles.includes(role.value);
 
                 return (
@@ -780,8 +928,8 @@ export default function UsersPage() {
             </div>
 
             <div>
-              <span>Admin</span>
-              <strong>{loading ? "..." : summary.admins}</strong>
+              <span>Rollar</span>
+              <strong>{loading ? "..." : roleOptions.length}</strong>
             </div>
           </div>
 
@@ -825,6 +973,12 @@ export default function UsersPage() {
                             Şirkət <span>{sortIcon("company")}</span>
                           </button>
                         </th>
+
+                        <th>
+  <button type="button" onClick={() => toggleSort("department")}>
+    Departament <span>{sortIcon("department")}</span>
+  </button>
+</th>
 
                         <th>
                           <button
@@ -883,10 +1037,12 @@ export default function UsersPage() {
                             <td>{user.email || "-"}</td>
 
                             <td>
-                              <RolePill role={getUserRole(user)} />
+                              <RolePill role={getUserRole(user)} getRoleLabel={getRoleLabel} />
                             </td>
 
                             <td>{companyMap.get(companyId) || "-"}</td>
+
+                            <td>{getUserDepartmentDisplay(user, departmentMap)}</td>
 
                             <td>{getAccessScopeLabel(getUserAccessScope(user))}</td>
 
@@ -951,6 +1107,11 @@ export default function UsersPage() {
                             <span>Şirkət</span>
                             <strong>{companyMap.get(companyId) || "-"}</strong>
                           </div>
+
+                          <div>
+  <span>Departament</span>
+  <strong>{getUserDepartmentDisplay(user, departmentMap)}</strong>
+</div>
 
                           <div>
                             <span>Yaradılma tarixi</span>
@@ -1068,16 +1229,13 @@ export default function UsersPage() {
               </div>
             </div>
 
-            <div className="users-floating-stats">
-              <div>
-                <span>Admin</span>
-                <strong>{summary.admins}</strong>
-              </div>
-
-              <div>
-                <span>Rəhbər</span>
-                <strong>{summary.rehbers}</strong>
-              </div>
+            <div className="users-floating-stats users-floating-stats-roles">
+              {roleOptions.map((role) => (
+                <div key={role.value}>
+                  <span>{role.label}</span>
+                  <strong>{roleCounts[role.value] || 0}</strong>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1136,10 +1294,7 @@ export default function UsersPage() {
                     <div key={dept.name} className="users-department-row">
                       <div>
                         <strong>{dept.name}</strong>
-                        <span>
-                          Admin: {dept.roles.ADMIN || 0} · Rəhbər:{" "}
-                          {dept.roles.REHBER || 0} · User: {dept.roles.USER || 0}
-                        </span>
+                        <span>{getDepartmentRoleText(dept)}</span>
                       </div>
 
                       <b>{dept.total}</b>
@@ -1152,13 +1307,15 @@ export default function UsersPage() {
         </aside>
       </div>
 
-      <UserModal
+           <UserModal
         open={modalOpen}
         visible={modalVisible}
         editingUser={editingUser}
         form={form}
         setForm={setForm}
         companies={companies}
+        departments={departments}
+        roleOptions={roleOptions}
         saving={saving}
         error={error}
         onClose={closeModal}
@@ -1184,11 +1341,22 @@ function UserModal({
   form,
   setForm,
   companies,
+  departments,
+  roleOptions,
   saving,
   error,
   onClose,
   onSubmit,
 }) {
+
+  const filteredDepartments = useMemo(() => {
+  if (!form.company_id) return [];
+
+  return departments.filter(
+    (department) => String(department.company_id) === String(form.company_id)
+  );
+}, [departments, form.company_id]);
+
   if (!open) return null;
 
   return (
@@ -1287,7 +1455,7 @@ function UserModal({
                 }))
               }
             >
-              {ROLE_OPTIONS.map((role) => (
+              {roleOptions.map((role) => (
                 <option key={role.value} value={role.value}>
                   {role.label}
                 </option>
@@ -1297,15 +1465,16 @@ function UserModal({
 
           <label className="settings-field">
             <span>Şirkət</span>
-            <select
-              value={form.company_id}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  company_id: e.target.value,
-                }))
-              }
-            >
+           <select
+  value={form.company_id}
+  onChange={(e) =>
+    setForm((prev) => ({
+      ...prev,
+      company_id: e.target.value,
+      department_id: "",
+    }))
+  }
+>
               <option value="">Şirkət seçilməyib</option>
               {companies.map((company) => (
                 <option key={company.id} value={String(company.id)}>
@@ -1314,6 +1483,30 @@ function UserModal({
               ))}
             </select>
           </label>
+
+          <label className="settings-field">
+  <span>Departament</span>
+  <select
+    value={form.department_id}
+    onChange={(e) =>
+      setForm((prev) => ({
+        ...prev,
+        department_id: e.target.value,
+      }))
+    }
+    disabled={!form.company_id}
+  >
+    <option value="">
+      {form.company_id ? "Departament seçilməyib" : "Əvvəl şirkət seç"}
+    </option>
+
+    {filteredDepartments.map((department) => (
+      <option key={department.id} value={String(department.id)}>
+        {department.name}
+      </option>
+    ))}
+  </select>
+</label>
 
           <label className="settings-field">
             <span>Access scope</span>
@@ -1368,7 +1561,7 @@ function UserModal({
   );
 }
 
-function RolePill({ role }) {
+function RolePill({ role, getRoleLabel }) {
   return (
     <span className={`settings-status status-${role || "USER"}`}>
       {getRoleLabel(role)}
