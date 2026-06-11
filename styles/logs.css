@@ -1,0 +1,933 @@
+.logsPage {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  max-width: 100%;
+  padding-bottom: 34px;
+}
+
+.logsHero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  border: 1px solid #e2e8f0;
+  border-radius: 28px;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.14), transparent 32%),
+    radial-gradient(circle at 0% 100%, rgba(6, 182, 212, 0.1), transparent 30%),
+    linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.06);
+}
+
+.logsEyebrow {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.logsHero h1 {
+  margin: 0;
+  color: #020617;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -0.07em;
+}
+
+.logsHero p {
+  max-width: 760px;
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.65;
+  font-weight: 650;
+}
+
+.logsHeroActions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 360px;
+}
+
+.logsHeroActions button,
+.logsFiltersHead button,
+.logsSearchRow button,
+.logsViewBtn,
+.logsMobileView,
+.logsPageButtons button,
+.logsDrawerFooter button {
+  border: 1px solid #dbe3ee;
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 900;
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.logsHeroActions button {
+  height: 42px;
+  border-radius: 14px;
+  padding: 0 14px;
+}
+
+.logsHeroActions button:hover,
+.logsFiltersHead button:hover,
+.logsSearchRow button:hover,
+.logsViewBtn:hover,
+.logsMobileView:hover,
+.logsPageButtons button:hover:not(:disabled),
+.logsDrawerFooter button:hover {
+  transform: translateY(-1px);
+  border-color: #bfdbfe;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+}
+
+.logsHeroActions button.primary {
+  border: 0;
+  background: linear-gradient(135deg, #2563eb, #0284c7);
+  color: #ffffff;
+  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.22);
+}
+
+.logsStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.logsStatCard {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.08), transparent 35%),
+    #ffffff;
+  box-shadow: 0 16px 45px rgba(15, 23, 42, 0.055);
+}
+
+.logsStatCard::after {
+  content: "";
+  position: absolute;
+  right: -32px;
+  top: -34px;
+  width: 92px;
+  height: 92px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.logsStatCard span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.logsStatCard strong {
+  display: block;
+  margin-top: 8px;
+  color: #0f172a;
+  font-size: 32px;
+  line-height: 1;
+  letter-spacing: -0.07em;
+}
+
+.logsFiltersCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 28px;
+  padding: 18px;
+  background: #ffffff;
+  box-shadow: 0 16px 45px rgba(15, 23, 42, 0.045);
+}
+
+.logsFiltersHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.logsFiltersHead h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 19px;
+  letter-spacing: -0.04em;
+}
+
+.logsFiltersHead p {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.logsFiltersHead button {
+  height: 40px;
+  border-radius: 14px;
+  padding: 0 14px;
+}
+
+.logsSearchRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.logsSearchRow input,
+.logsDateRow input,
+.logsPageSize select,
+.logsPagination select {
+  width: 100%;
+  border: 1px solid #dbe3ee;
+  border-radius: 15px;
+  background: #ffffff;
+  color: #0f172a;
+  outline: none;
+  font-weight: 800;
+}
+
+.logsSearchRow input {
+  height: 46px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.logsSearchRow button {
+  height: 46px;
+  border-radius: 15px;
+  padding: 0 16px;
+}
+
+.logsDateRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 240px));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.logsDateRow label {
+  display: grid;
+  gap: 7px;
+}
+
+.logsDateRow span {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.logsDateRow input {
+  height: 44px;
+  padding: 0 13px;
+  font-size: 13px;
+}
+
+.logsFilterGroup {
+  margin-top: 16px;
+}
+
+.logsFilterTitle {
+  margin-bottom: 8px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.logsChipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.logsChip {
+  min-height: 34px;
+  border: 1px solid #dbe3ee;
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: #f8fafc;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.logsChip span {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.logsChip.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.logsChip.active span {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.logsEmptyMini {
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.logsTableCard {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 28px;
+  background: #ffffff;
+  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.055);
+}
+
+.logsTableTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.logsTableTop h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 20px;
+  letter-spacing: -0.04em;
+}
+
+.logsTableTop p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.logsPageSize,
+.logsPagination > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logsPageSize span,
+.logsPagination span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.logsPageSize select,
+.logsPagination select {
+  height: 38px;
+  min-width: 86px;
+  padding: 0 10px;
+}
+
+.logsTableWrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.logsTable {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  min-width: 0;
+}
+
+.logsTable th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 10px;
+  text-align: left;
+}
+
+.logsTable td {
+  border-bottom: 1px solid #eef2f7;
+  padding: 12px 10px;
+  vertical-align: middle;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.logsTable tbody tr:hover {
+  background: #f8fafc;
+}
+
+.logsTable th button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  text-align: left;
+}
+
+.logsTable th button b {
+  width: 22px;
+  height: 22px;
+  border-radius: 9px;
+  background: #eef2ff;
+  color: #2563eb;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+}
+
+.logsTable th button.active b {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.logsTable .dateCol {
+  width: 110px;
+}
+
+.logsTable .typeCol {
+  width: 160px;
+}
+
+.logsTable .actionsCol {
+  width: 86px;
+  text-align: center;
+}
+
+.logsDateCell,
+.logsInventoryCell,
+.logsPersonCell {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.logsDateCell strong,
+.logsInventoryCell strong,
+.logsPersonCell strong {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logsDateCell span,
+.logsInventoryCell span,
+.logsPersonCell span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logsTypePill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logsTypePill.type-user {
+  color: #1d4ed8;
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+}
+
+.logsTypePill.type-manual {
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+}
+
+.logsTypePill.type-warehouse {
+  color: #047857;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+}
+
+.logsTypePill.type-default {
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.logsCompanyMini {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.logsCompanyMini span {
+  min-width: 0;
+  max-width: 92px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logsCompanyMini b {
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.logsViewBtn {
+  height: 34px;
+  min-width: 58px;
+  border-radius: 13px;
+  font-size: 12px;
+}
+
+.logsEmptyState {
+  padding: 42px 18px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.logsEmptyState strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.logsPagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px 18px;
+  border-top: 1px solid #eef2f7;
+}
+
+.logsPageButtons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.logsPageButtons button {
+  height: 38px;
+  border-radius: 13px;
+  padding: 0 13px;
+}
+
+.logsPageButtons button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.logsPageButtons strong {
+  min-width: 72px;
+  text-align: center;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.logsMobileList {
+  display: none;
+  padding: 14px;
+  gap: 12px;
+}
+
+.logsMobileCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  padding: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 35px rgba(15, 23, 42, 0.05);
+}
+
+.logsMobileTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.logsMobileTop span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.logsMobileTop h3 {
+  margin: 4px 0 0;
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 1.25;
+  letter-spacing: -0.04em;
+}
+
+.logsMobileGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.logsMobileGrid div {
+  border: 1px solid #eef2f7;
+  border-radius: 16px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.logsMobileGrid span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  margin-bottom: 4px;
+}
+
+.logsMobileGrid strong {
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.logsMobileView {
+  width: 100%;
+  height: 40px;
+  border-radius: 14px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+/* Drawer */
+.logsDrawerRoot {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483600;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.logsDrawerBackdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.logsDrawer {
+  position: relative;
+  z-index: 1;
+  width: min(520px, 100vw);
+  height: 100%;
+  background: #ffffff;
+  box-shadow: -30px 0 90px rgba(15, 23, 42, 0.25);
+  display: flex;
+  flex-direction: column;
+  animation: logsDrawerIn 0.22s ease both;
+}
+
+.logsDrawerHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 22px;
+  border-bottom: 1px solid #e2e8f0;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(37, 99, 235, 0.1), transparent 35%),
+    #ffffff;
+}
+
+.logsDrawerHead span {
+  display: inline-flex;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.logsDrawerHead h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 26px;
+  letter-spacing: -0.06em;
+}
+
+.logsDrawerHead p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.logsDrawerHead button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #dbe3ee;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 26px;
+  cursor: pointer;
+}
+
+.logsDrawerBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+  background: #f8fafc;
+}
+
+.logsDetailSection {
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.logsDetailSection h3 {
+  margin: 0 0 12px;
+  color: #0f172a;
+  font-size: 17px;
+  letter-spacing: -0.04em;
+}
+
+.logsDetailRow {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #eef2f7;
+}
+
+.logsDetailRow:first-of-type {
+  border-top: 0;
+}
+
+.logsDetailRow span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.logsDetailRow strong {
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.logsDrawerFooter {
+  padding: 14px 18px;
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.logsDrawerFooter button {
+  width: 100%;
+  height: 44px;
+  border-radius: 15px;
+}
+
+@keyframes logsDrawerIn {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Responsive */
+@media (max-width: 1180px) {
+  .logsStatsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .logsHero {
+    flex-direction: column;
+  }
+
+  .logsHeroActions {
+    min-width: 0;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .logsTableWrap {
+    display: none;
+  }
+
+  .logsMobileList {
+    display: grid;
+  }
+
+  .logsTableTop {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .logsStatsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .logsDateRow {
+    grid-template-columns: 1fr;
+  }
+
+  .logsSearchRow {
+    grid-template-columns: 1fr;
+  }
+
+  .logsHeroActions {
+    width: 100%;
+  }
+
+  .logsHeroActions button {
+    flex: 1 1 42%;
+  }
+}
+
+@media (max-width: 560px) {
+  .logsHero {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .logsHero h1 {
+    font-size: 28px;
+  }
+
+  .logsStatsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .logsFiltersCard,
+  .logsTableCard {
+    border-radius: 22px;
+  }
+
+  .logsFiltersHead {
+    flex-direction: column;
+  }
+
+  .logsMobileGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .logsPagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .logsPagination > div:first-child,
+  .logsPageButtons {
+    justify-content: space-between;
+  }
+
+  .logsDrawer {
+    width: 100vw;
+  }
+
+  .logsDetailRow {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+@media print {
+  .logsHeroActions,
+  .logsFiltersCard,
+  .logsPagination,
+  .logsMobileList,
+  .logsDrawerRoot {
+    display: none !important;
+  }
+
+  .logsPage {
+    padding: 0 !important;
+  }
+
+  .logsHero,
+  .logsStatsGrid,
+  .logsTableCard {
+    box-shadow: none !important;
+  }
+
+  .logsTableWrap {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .logsTable {
+    font-size: 10px !important;
+  }
+}

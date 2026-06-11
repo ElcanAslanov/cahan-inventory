@@ -13,42 +13,60 @@ const ROLES = {
 };
 
 const MENU = [
-  {
-    group: "Əsas",
-    items: [
-      {
-        label: "Dashboard",
-        href: "/dashboard",
-        icon: "⌂",
-        roles: [
-          ROLES.ADMIN,
-          ROLES.REHBER,
-          ROLES.USER,
-          ROLES.IZLEYICI,
-          ROLES.VIEWER,
-          ROLES.AUDIT,
-        ],
-      },
-      {
-        label: "İnventarlar",
-        href: "/dashboard/inventory",
-        icon: "◈",
-        roles: [
-          ROLES.ADMIN,
-          ROLES.REHBER,
-          ROLES.IZLEYICI,
-          ROLES.VIEWER,
-          ROLES.AUDIT,
-        ],
-      },
-      {
-        label: "Mənim inventarlarım",
-        href: "/dashboard/my-inventory",
-        icon: "◎",
-        roles: [ROLES.ADMIN, ROLES.REHBER, ROLES.USER],
-      },
-    ],
-  },
+ {
+  group: "Əsas",
+  items: [
+    {
+      label: "Dashboard",
+      href: "/dashboard",
+      icon: "⌂",
+      roles: [
+        ROLES.ADMIN,
+        ROLES.REHBER,
+        ROLES.USER,
+        ROLES.IZLEYICI,
+        ROLES.VIEWER,
+        ROLES.AUDIT,
+      ],
+    },
+    {
+      label: "İnventarlar",
+      href: "/dashboard/inventory",
+      icon: "◈",
+      roles: [
+        ROLES.ADMIN,
+        ROLES.REHBER,
+        ROLES.IZLEYICI,
+        ROLES.VIEWER,
+        ROLES.AUDIT,
+      ],
+    },
+    {
+      label: "Yerdəyişmə",
+      href: "/dashboard/transfers",
+      icon: "⇄",
+      roles: [ROLES.ADMIN, ROLES.REHBER],
+    },
+    {
+      label: "Loglar",
+      href: "/dashboard/logs",
+      icon: "≣",
+      roles: [
+        ROLES.ADMIN,
+        ROLES.REHBER,
+        ROLES.IZLEYICI,
+        ROLES.VIEWER,
+        ROLES.AUDIT,
+      ],
+    },
+    {
+      label: "Mənim inventarlarım",
+      href: "/dashboard/my-inventory",
+      icon: "◎",
+      roles: [ROLES.ADMIN, ROLES.REHBER, ROLES.USER],
+    },
+  ],
+},
   {
     group: "Hesabat",
     items: [
