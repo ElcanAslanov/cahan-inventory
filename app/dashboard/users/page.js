@@ -176,6 +176,7 @@ function getUserDepartmentId(user) {
 
 function getUserDepartmentDisplay(user, departmentMap) {
   const id = String(getUserDepartmentId(user) || "");
+
   return (
     departmentMap?.get?.(id) ||
     user.department_name ||
@@ -190,16 +191,6 @@ function getUserAccessScope(user) {
   return user.access_scope || "OWN_COMPANY";
 }
 
-function getUserDepartmentName(user) {
-  return (
-    user.department_name ||
-    user.department ||
-    user.departments?.name ||
-    user.departmentName ||
-    "Departament seçilməyib"
-  );
-}
-
 async function getAuthHeaders() {
   const {
     data: { session },
@@ -211,12 +202,24 @@ async function getAuthHeaders() {
   };
 }
 
+function normalizePermissionKeys(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function hasPermission(permissionKeys, key) {
+  return normalizePermissionKeys(permissionKeys).includes(key);
+}
+
 export default function UsersPage() {
   const [loading, setLoading] = useState(true);
+  const [permissionLoading, setPermissionLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState("");
+  const [permissionKeys, setPermissionKeys] = useState([]);
+
   const [users, setUsers] = useState([]);
   const [companies, setCompanies] = useState([]);
-const [departments, setDepartments] = useState([]);
-const [roleOptions, setRoleOptions] = useState(FALLBACK_ROLE_OPTIONS);
+  const [departments, setDepartments] = useState([]);
+  const [roleOptions, setRoleOptions] = useState(FALLBACK_ROLE_OPTIONS);
 
   const [search, setSearch] = useState("");
   const [selectedRoles, setSelectedRoles] = useState([]);
@@ -243,13 +246,19 @@ const [roleOptions, setRoleOptions] = useState(FALLBACK_ROLE_OPTIONS);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
+  const canView = hasPermission(permissionKeys, "users.view");
+  const canExport = hasPermission(permissionKeys, "users.export");
+  const canCreate = hasPermission(permissionKeys, "users.create");
+  const canEdit = hasPermission(permissionKeys, "users.edit");
+  const canDelete = hasPermission(permissionKeys, "users.delete");
+
   function getRoleLabel(value) {
     const role = normalizeRoleValue(value);
     return roleOptions.find((x) => x.value === role)?.label || formatRoleLabel(role);
   }
 
   useEffect(() => {
-    loadInitialData();
+    bootPage();
   }, []);
 
   useEffect(() => {
@@ -274,31 +283,76 @@ const [roleOptions, setRoleOptions] = useState(FALLBACK_ROLE_OPTIONS);
     return () => window.clearTimeout(timer);
   }, [modalOpen]);
 
+  async function bootPage() {
+    await loadPermissionsAndData();
+  }
+
+  async function loadPermissionsAndData() {
+    setPermissionLoading(true);
+    setPermissionError("");
+
+    try {
+      const headers = await getAuthHeaders();
+
+      const res = await fetch("/api/me/permissions", {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Permission məlumatı alınmadı.");
+      }
+
+      const keys = normalizePermissionKeys(json.permissionKeys);
+      setPermissionKeys(keys);
+
+      if (!hasPermission(keys, "users.view")) {
+        setLoading(false);
+        return;
+      }
+
+      await loadInitialData();
+    } catch (err) {
+      console.error("USERS_PERMISSION_ERROR:", err);
+      setPermissionError(err?.message || "Permission məlumatı alınmadı.");
+      setLoading(false);
+    } finally {
+      setPermissionLoading(false);
+    }
+  }
+
   async function loadInitialData() {
     setLoading(true);
 
     try {
-    const [usersRes, companiesRes, departmentsRes, rolesRes] = await Promise.all([
-  fetch("/api/admin/users", {
-    method: "GET",
-    cache: "no-store",
-  }),
+      const headers = await getAuthHeaders();
 
-  supabase
-    .from("companies")
-    .select("id,name,status")
-    .order("name", { ascending: true }),
+      const [usersRes, companiesRes, departmentsRes, rolesRes] = await Promise.all([
+        fetch("/api/admin/users", {
+          method: "GET",
+          headers,
+          cache: "no-store",
+        }),
 
-  supabase
-    .from("departments")
-    .select("id,name,company_id,status")
-    .order("name", { ascending: true }),
+        supabase
+          .from("companies")
+          .select("id,name,status")
+          .order("name", { ascending: true }),
 
-  supabase
-    .from("roles")
-    .select("id,name,label,created_at")
-    .order("name", { ascending: true }),
-]);
+        supabase
+          .from("departments")
+          .select("id,name,company_id,status")
+          .order("name", { ascending: true }),
+
+        supabase
+          .from("roles")
+          .select("id,name,label,created_at")
+          .order("name", { ascending: true }),
+      ]);
 
       const usersJson = await usersRes.json();
 
@@ -309,7 +363,7 @@ const [roleOptions, setRoleOptions] = useState(FALLBACK_ROLE_OPTIONS);
       }
 
       if (companiesRes.error) throw companiesRes.error;
-if (departmentsRes.error) throw departmentsRes.error;
+      if (departmentsRes.error) throw departmentsRes.error;
 
       let nextRoleOptions = FALLBACK_ROLE_OPTIONS;
 
@@ -329,16 +383,16 @@ if (departmentsRes.error) throw departmentsRes.error;
       }
 
       setUsers(usersJson.users || []);
-setCompanies(companiesRes.data || []);
-setDepartments(departmentsRes.data || []);
-setRoleOptions(nextRoleOptions);
+      setCompanies(companiesRes.data || []);
+      setDepartments(departmentsRes.data || []);
+      setRoleOptions(nextRoleOptions);
     } catch (err) {
       console.error("USERS LOAD ERROR:", err);
       alert(err?.message || "İstifadəçilər yüklənərkən xəta baş verdi.");
       setUsers([]);
-setCompanies([]);
-setDepartments([]);
-setRoleOptions(FALLBACK_ROLE_OPTIONS);
+      setCompanies([]);
+      setDepartments([]);
+      setRoleOptions(FALLBACK_ROLE_OPTIONS);
     } finally {
       setLoading(false);
     }
@@ -355,14 +409,14 @@ setRoleOptions(FALLBACK_ROLE_OPTIONS);
   }, [companies]);
 
   const departmentMap = useMemo(() => {
-  const map = new Map();
+    const map = new Map();
 
-  departments.forEach((department) => {
-    map.set(String(department.id), department.name);
-  });
+    departments.forEach((department) => {
+      map.set(String(department.id), department.name);
+    });
 
-  return map;
-}, [departments]);
+    return map;
+  }, [departments]);
 
   const roleCounts = useMemo(() => {
     const map = {};
@@ -428,8 +482,8 @@ setRoleOptions(FALLBACK_ROLE_OPTIONS);
     createdFrom,
     createdTo,
     companyMap,
-departmentMap,
-roleOptions,
+    departmentMap,
+    roleOptions,
   ]);
 
   const sortedUsers = useMemo(() => {
@@ -460,9 +514,9 @@ roleOptions,
       }
 
       if (sortBy === "department") {
-  aValue = getUserDepartmentDisplay(a, departmentMap);
-  bValue = getUserDepartmentDisplay(b, departmentMap);
-}
+        aValue = getUserDepartmentDisplay(a, departmentMap);
+        bValue = getUserDepartmentDisplay(b, departmentMap);
+      }
 
       if (sortBy === "access_scope") {
         aValue = getAccessScopeLabel(getUserAccessScope(a));
@@ -572,6 +626,8 @@ roleOptions,
     );
   }, [companyAnalytics, expandedCompanyId]);
 
+  const hasRowActions = canEdit || canDelete;
+
   function toggleSort(column) {
     if (sortBy === column) {
       setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -600,6 +656,11 @@ roleOptions,
   }
 
   function openCreateModal() {
+    if (!canCreate) {
+      alert("Yeni istifadəçi əlavə etmək üçün users.create icazəsi lazımdır.");
+      return;
+    }
+
     setEditingUser(null);
     setForm({
       ...EMPTY_FORM,
@@ -613,6 +674,11 @@ roleOptions,
   }
 
   function openEditModal(user) {
+    if (!canEdit) {
+      alert("İstifadəçini düzəltmək üçün users.edit icazəsi lazımdır.");
+      return;
+    }
+
     setEditingUser(user);
     setForm({
       full_name: user.full_name || "",
@@ -621,13 +687,22 @@ roleOptions,
       user_role: getUserRole(user),
       status: getUserStatus(user),
       company_id: getUserCompanyId(user) ? String(getUserCompanyId(user)) : "",
-department_id: getUserDepartmentId(user)
-  ? String(getUserDepartmentId(user))
-  : "",
-access_scope: getUserAccessScope(user),
+      department_id: getUserDepartmentId(user)
+        ? String(getUserDepartmentId(user))
+        : "",
+      access_scope: getUserAccessScope(user),
     });
     setError("");
     setModalOpen(true);
+  }
+
+  function openDeleteModal(user) {
+    if (!canDelete) {
+      alert("İstifadəçini silmək üçün users.delete icazəsi lazımdır.");
+      return;
+    }
+
+    setDeleteUser(user);
   }
 
   function closeModal() {
@@ -644,6 +719,16 @@ access_scope: getUserAccessScope(user),
 
   async function handleSubmit(e) {
     e.preventDefault();
+
+    if (editingUser?.id && !canEdit) {
+      setError("Bu əməliyyat üçün users.edit icazəsi lazımdır.");
+      return;
+    }
+
+    if (!editingUser?.id && !canCreate) {
+      setError("Bu əməliyyat üçün users.create icazəsi lazımdır.");
+      return;
+    }
 
     const fullName = form.full_name.trim();
     const email = form.email.trim().toLowerCase();
@@ -680,16 +765,16 @@ access_scope: getUserAccessScope(user),
     try {
       const headers = await getAuthHeaders();
 
-     const payload = {
-  id: editingUser?.id,
-  full_name: fullName,
-  email,
-  user_role: form.user_role,
-  status: form.status,
-  company_id: form.company_id || null,
-  department_id: form.department_id || null,
-  access_scope: form.access_scope,
-};
+      const payload = {
+        id: editingUser?.id,
+        full_name: fullName,
+        email,
+        user_role: form.user_role,
+        status: form.status,
+        company_id: form.company_id || null,
+        department_id: form.department_id || null,
+        access_scope: form.access_scope,
+      };
 
       if (password) {
         payload.password = password;
@@ -721,6 +806,11 @@ access_scope: getUserAccessScope(user),
 
   async function handleDeleteConfirm() {
     if (!deleteUser?.id) return;
+
+    if (!canDelete) {
+      alert("Bu əməliyyat üçün users.delete icazəsi lazımdır.");
+      return;
+    }
 
     setDeleting(true);
 
@@ -769,6 +859,41 @@ access_scope: getUserAccessScope(user),
       .join(" · ");
   }
 
+  if (permissionLoading || loading) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">İstifadəçilər yüklənir...</div>
+      </section>
+    );
+  }
+
+  if (permissionError) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Permission xətası</strong>
+          <p>{permissionError}</p>
+          <button type="button" onClick={loadPermissionsAndData}>
+            Yenidən yoxla
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Giriş icazəsi yoxdur</strong>
+          <p>
+            Bu səhifəyə baxmaq üçün <b>users.view</b> icazəsi lazımdır.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="settings-page">
       <div className="settings-hero users-hero-modern">
@@ -776,17 +901,33 @@ access_scope: getUserAccessScope(user),
           <h1>İstifadəçilər</h1>
           <p>
             İnventar sistemində istifadəçiləri, rolları, şirkətləri və giriş
-            səviyyələrini idarə et.
+            səviyyələrini analiz et.
           </p>
         </div>
 
-        <button
-          type="button"
-          className="settings-primary-btn"
-          onClick={openCreateModal}
-        >
-          + Yeni istifadəçi
-        </button>
+        <div className="users-hero-actions">
+          {canExport && (
+            <button
+              type="button"
+              className="settings-secondary-btn"
+              onClick={() => {
+                alert("Export funksiyası bu səhifədə ayrıca əlavə olunacaq.");
+              }}
+            >
+              Export
+            </button>
+          )}
+
+          {canCreate && (
+            <button
+              type="button"
+              className="settings-primary-btn"
+              onClick={openCreateModal}
+            >
+              + Yeni istifadəçi
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="users-modern-grid">
@@ -909,34 +1050,32 @@ access_scope: getUserAccessScope(user),
           <div className="settings-summary users-summary-modern">
             <div>
               <span>Göstərilən</span>
-              <strong>{loading ? "..." : summary.shown}</strong>
+              <strong>{summary.shown}</strong>
             </div>
 
             <div>
               <span>Ümumi</span>
-              <strong>{loading ? "..." : summary.total}</strong>
+              <strong>{summary.total}</strong>
             </div>
 
             <div>
               <span>Aktiv</span>
-              <strong>{loading ? "..." : summary.active}</strong>
+              <strong>{summary.active}</strong>
             </div>
 
             <div>
               <span>Passiv</span>
-              <strong>{loading ? "..." : summary.inactive}</strong>
+              <strong>{summary.inactive}</strong>
             </div>
 
             <div>
               <span>Rollar</span>
-              <strong>{loading ? "..." : roleOptions.length}</strong>
+              <strong>{roleOptions.length}</strong>
             </div>
           </div>
 
           <div className="settings-table-card">
-            {loading ? (
-              <div className="settings-empty">İstifadəçilər yüklənir...</div>
-            ) : filteredUsers.length === 0 ? (
+            {filteredUsers.length === 0 ? (
               <div className="settings-empty">
                 <strong>İstifadəçi tapılmadı</strong>
                 <p>Hazırda bu filterlərə uyğun istifadəçi yoxdur.</p>
@@ -975,10 +1114,13 @@ access_scope: getUserAccessScope(user),
                         </th>
 
                         <th>
-  <button type="button" onClick={() => toggleSort("department")}>
-    Departament <span>{sortIcon("department")}</span>
-  </button>
-</th>
+                          <button
+                            type="button"
+                            onClick={() => toggleSort("department")}
+                          >
+                            Departament <span>{sortIcon("department")}</span>
+                          </button>
+                        </th>
 
                         <th>
                           <button
@@ -1008,7 +1150,7 @@ access_scope: getUserAccessScope(user),
                           </button>
                         </th>
 
-                        <th>Əməliyyatlar</th>
+                        {hasRowActions && <th>Əməliyyatlar</th>}
                       </tr>
                     </thead>
 
@@ -1052,24 +1194,30 @@ access_scope: getUserAccessScope(user),
 
                             <td>{formatDate(user.created_at)}</td>
 
-                            <td>
-                              <div className="settings-actions">
-                                <button
-                                  type="button"
-                                  onClick={() => openEditModal(user)}
-                                >
-                                  Düzəlt
-                                </button>
+                            {hasRowActions && (
+                              <td>
+                                <div className="settings-actions">
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditModal(user)}
+                                    >
+                                      Düzəlt
+                                    </button>
+                                  )}
 
-                                <button
-                                  type="button"
-                                  className="danger"
-                                  onClick={() => setDeleteUser(user)}
-                                >
-                                  Sil
-                                </button>
-                              </div>
-                            </td>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      className="danger"
+                                      onClick={() => openDeleteModal(user)}
+                                    >
+                                      Sil
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -1109,9 +1257,9 @@ access_scope: getUserAccessScope(user),
                           </div>
 
                           <div>
-  <span>Departament</span>
-  <strong>{getUserDepartmentDisplay(user, departmentMap)}</strong>
-</div>
+                            <span>Departament</span>
+                            <strong>{getUserDepartmentDisplay(user, departmentMap)}</strong>
+                          </div>
 
                           <div>
                             <span>Yaradılma tarixi</span>
@@ -1119,19 +1267,25 @@ access_scope: getUserAccessScope(user),
                           </div>
                         </div>
 
-                        <div className="settings-mobile-actions">
-                          <button type="button" onClick={() => openEditModal(user)}>
-                            Düzəlt
-                          </button>
+                        {hasRowActions && (
+                          <div className="settings-mobile-actions">
+                            {canEdit && (
+                              <button type="button" onClick={() => openEditModal(user)}>
+                                Düzəlt
+                              </button>
+                            )}
 
-                          <button
-                            type="button"
-                            className="danger"
-                            onClick={() => setDeleteUser(user)}
-                          >
-                            Sil
-                          </button>
-                        </div>
+                            {canDelete && (
+                              <button
+                                type="button"
+                                className="danger"
+                                onClick={() => openDeleteModal(user)}
+                              >
+                                Sil
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </article>
                     );
                   })}
@@ -1307,29 +1461,33 @@ access_scope: getUserAccessScope(user),
         </aside>
       </div>
 
-           <UserModal
-        open={modalOpen}
-        visible={modalVisible}
-        editingUser={editingUser}
-        form={form}
-        setForm={setForm}
-        companies={companies}
-        departments={departments}
-        roleOptions={roleOptions}
-        saving={saving}
-        error={error}
-        onClose={closeModal}
-        onSubmit={handleSubmit}
-      />
+      {(canCreate || canEdit) && (
+        <UserModal
+          open={modalOpen}
+          visible={modalVisible}
+          editingUser={editingUser}
+          form={form}
+          setForm={setForm}
+          companies={companies}
+          departments={departments}
+          roleOptions={roleOptions}
+          saving={saving}
+          error={error}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+        />
+      )}
 
-      <DeleteConfirmModal
-        item={deleteUser}
-        deleting={deleting}
-        onClose={() => {
-          if (!deleting) setDeleteUser(null);
-        }}
-        onConfirm={handleDeleteConfirm}
-      />
+      {canDelete && (
+        <DeleteConfirmModal
+          item={deleteUser}
+          deleting={deleting}
+          onClose={() => {
+            if (!deleting) setDeleteUser(null);
+          }}
+          onConfirm={handleDeleteConfirm}
+        />
+      )}
     </section>
   );
 }
@@ -1348,14 +1506,13 @@ function UserModal({
   onClose,
   onSubmit,
 }) {
-
   const filteredDepartments = useMemo(() => {
-  if (!form.company_id) return [];
+    if (!form.company_id) return [];
 
-  return departments.filter(
-    (department) => String(department.company_id) === String(form.company_id)
-  );
-}, [departments, form.company_id]);
+    return departments.filter(
+      (department) => String(department.company_id) === String(form.company_id)
+    );
+  }, [departments, form.company_id]);
 
   if (!open) return null;
 
@@ -1465,16 +1622,16 @@ function UserModal({
 
           <label className="settings-field">
             <span>Şirkət</span>
-           <select
-  value={form.company_id}
-  onChange={(e) =>
-    setForm((prev) => ({
-      ...prev,
-      company_id: e.target.value,
-      department_id: "",
-    }))
-  }
->
+            <select
+              value={form.company_id}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  company_id: e.target.value,
+                  department_id: "",
+                }))
+              }
+            >
               <option value="">Şirkət seçilməyib</option>
               {companies.map((company) => (
                 <option key={company.id} value={String(company.id)}>
@@ -1485,28 +1642,28 @@ function UserModal({
           </label>
 
           <label className="settings-field">
-  <span>Departament</span>
-  <select
-    value={form.department_id}
-    onChange={(e) =>
-      setForm((prev) => ({
-        ...prev,
-        department_id: e.target.value,
-      }))
-    }
-    disabled={!form.company_id}
-  >
-    <option value="">
-      {form.company_id ? "Departament seçilməyib" : "Əvvəl şirkət seç"}
-    </option>
+            <span>Departament</span>
+            <select
+              value={form.department_id}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  department_id: e.target.value,
+                }))
+              }
+              disabled={!form.company_id}
+            >
+              <option value="">
+                {form.company_id ? "Departament seçilməyib" : "Əvvəl şirkət seç"}
+              </option>
 
-    {filteredDepartments.map((department) => (
-      <option key={department.id} value={String(department.id)}>
-        {department.name}
-      </option>
-    ))}
-  </select>
-</label>
+              {filteredDepartments.map((department) => (
+                <option key={department.id} value={String(department.id)}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="settings-field">
             <span>Access scope</span>

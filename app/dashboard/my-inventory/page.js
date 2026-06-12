@@ -315,6 +315,25 @@ function makeMyInventorySummaryRows(summary, sortedItems, categoryAnalytics) {
   ];
 }
 
+async function getAuthHeaders() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session?.access_token || ""}`,
+  };
+}
+
+function normalizePermissionKeys(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function canPermission(permissionKeys, key) {
+  return normalizePermissionKeys(permissionKeys).includes(key);
+}
+
 function buildMyInventoryPrintHtml({
   rows,
   summary,
@@ -672,8 +691,13 @@ function buildMyInventoryPrintHtml({
 
 export default function MyInventoryPage() {
   const [loading, setLoading] = useState(true);
+  const [permissionLoading, setPermissionLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState("");
+
   const [me, setMe] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [permissionKeys, setPermissionKeys] = useState([]);
+
   const [items, setItems] = useState([]);
   const [debugInfo, setDebugInfo] = useState(null);
 
@@ -695,8 +719,11 @@ export default function MyInventoryPage() {
   const [modalVisible, setModalVisible] = useState(false);
   const [expandedCategory, setExpandedCategory] = useState("");
 
+  const canView = canPermission(permissionKeys, "my_inventory.view");
+  const canExport = canPermission(permissionKeys, "my_inventory.export");
+
   useEffect(() => {
-    loadMyInventory();
+    bootPage();
   }, []);
 
   useEffect(() => {
@@ -721,6 +748,48 @@ export default function MyInventoryPage() {
 
     return () => window.clearTimeout(timer);
   }, [selectedItem]);
+
+  async function bootPage() {
+    await loadPermissionsAndInventory();
+  }
+
+  async function loadPermissionsAndInventory() {
+    setPermissionLoading(true);
+    setPermissionError("");
+
+    try {
+      const headers = await getAuthHeaders();
+
+      const res = await fetch("/api/me/permissions", {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Permission məlumatı alınmadı.");
+      }
+
+      const keys = normalizePermissionKeys(json.permissionKeys);
+      setPermissionKeys(keys);
+
+      if (!canPermission(keys, "my_inventory.view")) {
+        setLoading(false);
+        return;
+      }
+
+      await loadMyInventory();
+    } catch (err) {
+      console.error("MY_INVENTORY_PERMISSION_ERROR:", err);
+      setPermissionError(err?.message || "Permission məlumatı alınmadı.");
+      setLoading(false);
+    } finally {
+      setPermissionLoading(false);
+    }
+  }
 
   async function loadMyInventory() {
     setLoading(true);
@@ -1168,6 +1237,7 @@ export default function MyInventoryPage() {
   }
 
   function openViewModal(row) {
+    if (!canView) return;
     setSelectedItem(row);
   }
 
@@ -1214,6 +1284,11 @@ export default function MyInventoryPage() {
   }
 
   function exportMyInventoryExcel() {
+    if (!canExport) {
+      alert("Bu əməliyyat üçün export icazəniz yoxdur.");
+      return;
+    }
+
     const reportRows = makeMyInventoryReportRows(sortedItems);
     const summaryRows = makeMyInventorySummaryRows(
       summary,
@@ -1268,6 +1343,11 @@ export default function MyInventoryPage() {
   }
 
   function printMyInventoryReport() {
+    if (!canExport) {
+      alert("Bu əməliyyat üçün print/export icazəniz yoxdur.");
+      return;
+    }
+
     const printWindow = window.open("", "_blank", "width=1400,height=900");
 
     if (!printWindow) {
@@ -1289,6 +1369,41 @@ export default function MyInventoryPage() {
     printWindow.document.close();
   }
 
+  if (permissionLoading || loading) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">Mənim inventarlarım yüklənir...</div>
+      </section>
+    );
+  }
+
+  if (permissionError) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Permission xətası</strong>
+          <p>{permissionError}</p>
+          <button type="button" onClick={loadPermissionsAndInventory}>
+            Yenidən yoxla
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Giriş icazəsi yoxdur</strong>
+          <p>
+            Bu səhifəyə baxmaq üçün <b>my_inventory.view</b> icazəsi lazımdır.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="settings-page">
       <div className="settings-hero my-inventory-hero-modern">
@@ -1300,23 +1415,27 @@ export default function MyInventoryPage() {
         </div>
 
         <div className="my-inventory-hero-actions">
-          <button
-            type="button"
-            className="my-inventory-report-btn excel"
-            onClick={exportMyInventoryExcel}
-            disabled={loading || sortedItems.length === 0}
-          >
-            Excel report
-          </button>
+          {canExport && (
+            <>
+              <button
+                type="button"
+                className="my-inventory-report-btn excel"
+                onClick={exportMyInventoryExcel}
+                disabled={sortedItems.length === 0}
+              >
+                Excel report
+              </button>
 
-          <button
-            type="button"
-            className="my-inventory-report-btn print"
-            onClick={printMyInventoryReport}
-            disabled={loading || sortedItems.length === 0}
-          >
-            Print report
-          </button>
+              <button
+                type="button"
+                className="my-inventory-report-btn print"
+                onClick={printMyInventoryReport}
+                disabled={sortedItems.length === 0}
+              >
+                Print report
+              </button>
+            </>
+          )}
 
           <button
             type="button"
@@ -1639,34 +1758,32 @@ export default function MyInventoryPage() {
       <div className="settings-summary my-inventory-summary-modern">
         <div>
           <span>Göstərilən</span>
-          <strong>{loading ? "..." : summary.shown}</strong>
+          <strong>{summary.shown}</strong>
         </div>
 
         <div>
           <span>Mənə təhkim olunan</span>
-          <strong>{loading ? "..." : summary.total}</strong>
+          <strong>{summary.total}</strong>
         </div>
 
         <div>
           <span>Təhkim olunub</span>
-          <strong>{loading ? "..." : summary.assigned}</strong>
+          <strong>{summary.assigned}</strong>
         </div>
 
         <div>
           <span>İstifadədə</span>
-          <strong>{loading ? "..." : summary.inUse}</strong>
+          <strong>{summary.inUse}</strong>
         </div>
 
         <div>
           <span>Kateqoriya sayı</span>
-          <strong>{loading ? "..." : summary.categories.length}</strong>
+          <strong>{summary.categories.length}</strong>
         </div>
       </div>
 
       <div className="settings-table-card">
-        {loading ? (
-          <div className="settings-empty">Mənim inventarlarım yüklənir...</div>
-        ) : !me ? (
+        {!me ? (
           <div className="settings-empty">
             <strong>Giriş edilməyib</strong>
             <p>İnventarları görmək üçün sistemə daxil olmaq lazımdır.</p>

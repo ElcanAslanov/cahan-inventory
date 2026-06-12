@@ -89,8 +89,31 @@ function isDateInRange(value, from, to) {
   return true;
 }
 
+async function getAuthHeaders() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session?.access_token || ""}`,
+  };
+}
+
+function normalizePermissionKeys(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function hasPermission(permissionKeys, key) {
+  return normalizePermissionKeys(permissionKeys).includes(key);
+}
+
 export default function DepartmentsPage() {
   const [loading, setLoading] = useState(true);
+  const [permissionLoading, setPermissionLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState("");
+  const [permissionKeys, setPermissionKeys] = useState([]);
+
   const [departments, setDepartments] = useState([]);
   const [companies, setCompanies] = useState([]);
 
@@ -116,13 +139,25 @@ export default function DepartmentsPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
+  const canView = hasPermission(permissionKeys, "departments.view");
+  const canCreate = hasPermission(permissionKeys, "departments.create");
+  const canEdit = hasPermission(permissionKeys, "departments.edit");
+  const canDelete = hasPermission(permissionKeys, "departments.delete");
+
   useEffect(() => {
-    loadInitialData();
+    bootPage();
   }, []);
 
   useEffect(() => {
     setPage(1);
-  }, [search, selectedCompanies, selectedStatuses, createdFrom, createdTo, pageSize]);
+  }, [
+    search,
+    selectedCompanies,
+    selectedStatuses,
+    createdFrom,
+    createdTo,
+    pageSize,
+  ]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -133,6 +168,48 @@ export default function DepartmentsPage() {
 
     return () => window.clearTimeout(timer);
   }, [modalOpen]);
+
+  async function bootPage() {
+    await loadPermissionsAndData();
+  }
+
+  async function loadPermissionsAndData() {
+    setPermissionLoading(true);
+    setPermissionError("");
+
+    try {
+      const headers = await getAuthHeaders();
+
+      const res = await fetch("/api/me/permissions", {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Permission məlumatı alınmadı.");
+      }
+
+      const keys = normalizePermissionKeys(json.permissionKeys);
+      setPermissionKeys(keys);
+
+      if (!hasPermission(keys, "departments.view")) {
+        setLoading(false);
+        return;
+      }
+
+      await loadInitialData();
+    } catch (err) {
+      console.error("DEPARTMENTS_PERMISSION_ERROR:", err);
+      setPermissionError(err?.message || "Permission məlumatı alınmadı.");
+      setLoading(false);
+    } finally {
+      setPermissionLoading(false);
+    }
+  }
 
   async function loadInitialData() {
     setLoading(true);
@@ -264,6 +341,8 @@ export default function DepartmentsPage() {
     };
   }, [departments, filteredDepartments]);
 
+  const hasRowActions = canEdit || canDelete;
+
   function toggleSort(column) {
     if (sortBy === column) {
       setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -302,6 +381,11 @@ export default function DepartmentsPage() {
   }
 
   function openCreateModal() {
+    if (!canCreate) {
+      alert("Yeni departament əlavə etmək üçün departments.create icazəsi lazımdır.");
+      return;
+    }
+
     setEditingDepartment(null);
     setForm({
       ...EMPTY_FORM,
@@ -317,6 +401,11 @@ export default function DepartmentsPage() {
   }
 
   function openEditModal(department) {
+    if (!canEdit) {
+      alert("Departamenti düzəltmək üçün departments.edit icazəsi lazımdır.");
+      return;
+    }
+
     setEditingDepartment(department);
     setForm({
       name: department.name || "",
@@ -325,6 +414,15 @@ export default function DepartmentsPage() {
     });
     setError("");
     setModalOpen(true);
+  }
+
+  function openDeleteModal(department) {
+    if (!canDelete) {
+      alert("Departamenti silmək üçün departments.delete icazəsi lazımdır.");
+      return;
+    }
+
+    setDeleteDepartment(department);
   }
 
   function closeModal() {
@@ -341,6 +439,16 @@ export default function DepartmentsPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+
+    if (editingDepartment?.id && !canEdit) {
+      setError("Bu əməliyyat üçün departments.edit icazəsi lazımdır.");
+      return;
+    }
+
+    if (!editingDepartment?.id && !canCreate) {
+      setError("Bu əməliyyat üçün departments.create icazəsi lazımdır.");
+      return;
+    }
 
     const name = form.name.trim();
 
@@ -398,6 +506,11 @@ export default function DepartmentsPage() {
   async function handleDeleteConfirm() {
     if (!deleteDepartment?.id) return;
 
+    if (!canDelete) {
+      alert("Bu əməliyyat üçün departments.delete icazəsi lazımdır.");
+      return;
+    }
+
     setDeleting(true);
 
     try {
@@ -432,24 +545,61 @@ export default function DepartmentsPage() {
     setPage(1);
   }
 
+  if (permissionLoading || loading) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">Departamentlər yüklənir...</div>
+      </section>
+    );
+  }
+
+  if (permissionError) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Permission xətası</strong>
+          <p>{permissionError}</p>
+          <button type="button" onClick={loadPermissionsAndData}>
+            Yenidən yoxla
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Giriş icazəsi yoxdur</strong>
+          <p>
+            Bu səhifəyə baxmaq üçün <b>departments.view</b> icazəsi lazımdır.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="settings-page">
       <div className="settings-hero departments-hero-modern">
         <div>
           <h1>Departamentlər</h1>
           <p>
-            Şirkətlərə bağlı departamentləri idarə et, filterlə, sırala və
-            ümumi vəziyyəti analiz et.
+            Şirkətlərə bağlı departamentləri filterlə, sırala və ümumi
+            vəziyyəti analiz et.
           </p>
         </div>
 
-        <button
-          type="button"
-          className="settings-primary-btn"
-          onClick={openCreateModal}
-        >
-          + Yeni departament
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            className="settings-primary-btn"
+            onClick={openCreateModal}
+          >
+            + Yeni departament
+          </button>
+        )}
       </div>
 
       <div className="departments-modern-grid">
@@ -554,34 +704,32 @@ export default function DepartmentsPage() {
           <div className="settings-summary departments-summary-modern">
             <div>
               <span>Göstərilən</span>
-              <strong>{loading ? "..." : summary.shown}</strong>
+              <strong>{summary.shown}</strong>
             </div>
 
             <div>
               <span>Ümumi</span>
-              <strong>{loading ? "..." : summary.total}</strong>
+              <strong>{summary.total}</strong>
             </div>
 
             <div>
               <span>Aktiv</span>
-              <strong>{loading ? "..." : summary.active}</strong>
+              <strong>{summary.active}</strong>
             </div>
 
             <div>
               <span>Passiv</span>
-              <strong>{loading ? "..." : summary.inactive}</strong>
+              <strong>{summary.inactive}</strong>
             </div>
 
             <div>
               <span>Şirkət sayı</span>
-              <strong>{loading ? "..." : summary.companies}</strong>
+              <strong>{summary.companies}</strong>
             </div>
           </div>
 
           <div className="settings-table-card">
-            {loading ? (
-              <div className="settings-empty">Departamentlər yüklənir...</div>
-            ) : filteredDepartments.length === 0 ? (
+            {filteredDepartments.length === 0 ? (
               <div className="settings-empty">
                 <strong>Departament tapılmadı</strong>
                 <p>Hazırda bu filterlərə uyğun departament yoxdur.</p>
@@ -629,7 +777,7 @@ export default function DepartmentsPage() {
                           </button>
                         </th>
 
-                        <th>Əməliyyatlar</th>
+                        {hasRowActions && <th>Əməliyyatlar</th>}
                       </tr>
                     </thead>
 
@@ -664,24 +812,30 @@ export default function DepartmentsPage() {
 
                             <td>{formatDate(department.created_at)}</td>
 
-                            <td>
-                              <div className="settings-actions">
-                                <button
-                                  type="button"
-                                  onClick={() => openEditModal(department)}
-                                >
-                                  Düzəlt
-                                </button>
+                            {hasRowActions && (
+                              <td>
+                                <div className="settings-actions">
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditModal(department)}
+                                    >
+                                      Düzəlt
+                                    </button>
+                                  )}
 
-                                <button
-                                  type="button"
-                                  className="danger"
-                                  onClick={() => setDeleteDepartment(department)}
-                                >
-                                  Sil
-                                </button>
-                              </div>
-                            </td>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      className="danger"
+                                      onClick={() => openDeleteModal(department)}
+                                    >
+                                      Sil
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -719,22 +873,28 @@ export default function DepartmentsPage() {
                           </div>
                         </div>
 
-                        <div className="settings-mobile-actions">
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(department)}
-                          >
-                            Düzəlt
-                          </button>
+                        {hasRowActions && (
+                          <div className="settings-mobile-actions">
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(department)}
+                              >
+                                Düzəlt
+                              </button>
+                            )}
 
-                          <button
-                            type="button"
-                            className="danger"
-                            onClick={() => setDeleteDepartment(department)}
-                          >
-                            Sil
-                          </button>
-                        </div>
+                            {canDelete && (
+                              <button
+                                type="button"
+                                className="danger"
+                                onClick={() => openDeleteModal(department)}
+                              >
+                                Sil
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </article>
                     );
                   })}
@@ -847,32 +1007,36 @@ export default function DepartmentsPage() {
         </aside>
       </div>
 
-      <DepartmentModal
-        open={modalOpen}
-        visible={modalVisible}
-        editingDepartment={editingDepartment}
-        form={form}
-        setForm={setForm}
-        companies={companies}
-        saving={saving}
-        error={error}
-        onClose={closeModal}
-        onSubmit={handleSubmit}
-      />
+      {(canCreate || canEdit) && (
+        <DepartmentModal
+          open={modalOpen}
+          visible={modalVisible}
+          editingDepartment={editingDepartment}
+          form={form}
+          setForm={setForm}
+          companies={companies}
+          saving={saving}
+          error={error}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+        />
+      )}
 
-      <DeleteConfirmModal
-        item={deleteDepartment}
-        deleting={deleting}
-        companyName={
-          deleteDepartment
-            ? companyMap.get(String(deleteDepartment.company_id || ""))
-            : ""
-        }
-        onClose={() => {
-          if (!deleting) setDeleteDepartment(null);
-        }}
-        onConfirm={handleDeleteConfirm}
-      />
+      {canDelete && (
+        <DeleteConfirmModal
+          item={deleteDepartment}
+          deleting={deleting}
+          companyName={
+            deleteDepartment
+              ? companyMap.get(String(deleteDepartment.company_id || ""))
+              : ""
+          }
+          onClose={() => {
+            if (!deleting) setDeleteDepartment(null);
+          }}
+          onConfirm={handleDeleteConfirm}
+        />
+      )}
     </section>
   );
 }
@@ -907,7 +1071,6 @@ function DepartmentModal({
       <form className="settings-modal smooth-modal-card" onSubmit={onSubmit}>
         <header className="settings-modal-head">
           <div>
-           
             <h2>
               {editingDepartment ? "Departamenti düzəlt" : "Yeni departament"}
             </h2>

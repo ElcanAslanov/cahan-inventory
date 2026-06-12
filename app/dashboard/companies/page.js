@@ -83,8 +83,31 @@ function isDateInRange(value, from, to) {
   return true;
 }
 
+async function getAuthHeaders() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session?.access_token || ""}`,
+  };
+}
+
+function normalizePermissionKeys(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function hasPermission(permissionKeys, key) {
+  return normalizePermissionKeys(permissionKeys).includes(key);
+}
+
 export default function CompaniesPage() {
   const [loading, setLoading] = useState(true);
+  const [permissionLoading, setPermissionLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState("");
+  const [permissionKeys, setPermissionKeys] = useState([]);
+
   const [companies, setCompanies] = useState([]);
 
   const [search, setSearch] = useState("");
@@ -112,8 +135,13 @@ export default function CompaniesPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
+  const canView = hasPermission(permissionKeys, "companies.view");
+  const canCreate = hasPermission(permissionKeys, "companies.create");
+  const canEdit = hasPermission(permissionKeys, "companies.edit");
+  const canDelete = hasPermission(permissionKeys, "companies.delete");
+
   useEffect(() => {
-    loadCompanies();
+    bootPage();
   }, []);
 
   useEffect(() => {
@@ -129,6 +157,48 @@ export default function CompaniesPage() {
 
     return () => window.clearTimeout(timer);
   }, [modalOpen]);
+
+  async function bootPage() {
+    await loadPermissionsAndCompanies();
+  }
+
+  async function loadPermissionsAndCompanies() {
+    setPermissionLoading(true);
+    setPermissionError("");
+
+    try {
+      const headers = await getAuthHeaders();
+
+      const res = await fetch("/api/me/permissions", {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Permission məlumatı alınmadı.");
+      }
+
+      const keys = normalizePermissionKeys(json.permissionKeys);
+      setPermissionKeys(keys);
+
+      if (!hasPermission(keys, "companies.view")) {
+        setLoading(false);
+        return;
+      }
+
+      await loadCompanies();
+    } catch (err) {
+      console.error("COMPANIES_PERMISSION_ERROR:", err);
+      setPermissionError(err?.message || "Permission məlumatı alınmadı.");
+      setLoading(false);
+    } finally {
+      setPermissionLoading(false);
+    }
+  }
 
   async function loadCompanies() {
     setLoading(true);
@@ -240,6 +310,11 @@ export default function CompaniesPage() {
   }
 
   function openCreateModal() {
+    if (!canCreate) {
+      alert("Yeni şirkət əlavə etmək üçün companies.create icazəsi lazımdır.");
+      return;
+    }
+
     setEditingCompany(null);
     setForm({
       name: "",
@@ -250,6 +325,11 @@ export default function CompaniesPage() {
   }
 
   function openEditModal(company) {
+    if (!canEdit) {
+      alert("Şirkəti düzəltmək üçün companies.edit icazəsi lazımdır.");
+      return;
+    }
+
     setEditingCompany(company);
     setForm({
       name: company.name || "",
@@ -257,6 +337,15 @@ export default function CompaniesPage() {
     });
     setError("");
     setModalOpen(true);
+  }
+
+  function openDeleteModal(company) {
+    if (!canDelete) {
+      alert("Şirkəti silmək üçün companies.delete icazəsi lazımdır.");
+      return;
+    }
+
+    setDeleteCompany(company);
   }
 
   function closeModal() {
@@ -273,6 +362,16 @@ export default function CompaniesPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+
+    if (editingCompany?.id && !canEdit) {
+      setError("Bu əməliyyat üçün companies.edit icazəsi lazımdır.");
+      return;
+    }
+
+    if (!editingCompany?.id && !canCreate) {
+      setError("Bu əməliyyat üçün companies.create icazəsi lazımdır.");
+      return;
+    }
 
     const name = form.name.trim();
 
@@ -321,6 +420,11 @@ export default function CompaniesPage() {
   async function handleDeleteConfirm() {
     if (!deleteCompany?.id) return;
 
+    if (!canDelete) {
+      alert("Bu əməliyyat üçün companies.delete icazəsi lazımdır.");
+      return;
+    }
+
     setDeleting(true);
 
     const { error } = await supabase
@@ -353,24 +457,63 @@ export default function CompaniesPage() {
     setPage(1);
   }
 
+  if (permissionLoading || loading) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">Şirkətlər yüklənir...</div>
+      </section>
+    );
+  }
+
+  if (permissionError) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Permission xətası</strong>
+          <p>{permissionError}</p>
+          <button type="button" onClick={loadPermissionsAndCompanies}>
+            Yenidən yoxla
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Giriş icazəsi yoxdur</strong>
+          <p>
+            Bu səhifəyə baxmaq üçün <b>companies.view</b> icazəsi lazımdır.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  const hasRowActions = canEdit || canDelete;
+
   return (
     <section className="settings-page">
       <div className="settings-hero companies-hero-modern">
         <div>
           <h1>Şirkətlər</h1>
           <p>
-            İnventar sistemində istifadə olunan şirkətləri idarə et, filterlə,
-            sırala və ümumi vəziyyəti analiz et.
+            İnventar sistemində istifadə olunan şirkətləri filterlə, sırala və
+            ümumi vəziyyəti analiz et.
           </p>
         </div>
 
-        <button
-          type="button"
-          className="settings-primary-btn"
-          onClick={openCreateModal}
-        >
-          + Yeni şirkət
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            className="settings-primary-btn"
+            onClick={openCreateModal}
+          >
+            + Yeni şirkət
+          </button>
+        )}
       </div>
 
       <div className="companies-modern-grid">
@@ -450,29 +593,27 @@ export default function CompaniesPage() {
           <div className="settings-summary companies-summary-modern">
             <div>
               <span>Göstərilən</span>
-              <strong>{loading ? "..." : summary.shown}</strong>
+              <strong>{summary.shown}</strong>
             </div>
 
             <div>
               <span>Ümumi</span>
-              <strong>{loading ? "..." : summary.total}</strong>
+              <strong>{summary.total}</strong>
             </div>
 
             <div>
               <span>Aktiv</span>
-              <strong>{loading ? "..." : summary.active}</strong>
+              <strong>{summary.active}</strong>
             </div>
 
             <div>
               <span>Passiv</span>
-              <strong>{loading ? "..." : summary.inactive}</strong>
+              <strong>{summary.inactive}</strong>
             </div>
           </div>
 
           <div className="settings-table-card">
-            {loading ? (
-              <div className="settings-empty">Şirkətlər yüklənir...</div>
-            ) : filteredCompanies.length === 0 ? (
+            {filteredCompanies.length === 0 ? (
               <div className="settings-empty">
                 <strong>Şirkət tapılmadı</strong>
                 <p>Hazırda bu filterlərə uyğun şirkət yoxdur.</p>
@@ -511,7 +652,7 @@ export default function CompaniesPage() {
                           </button>
                         </th>
 
-                        <th>Əməliyyatlar</th>
+                        {hasRowActions && <th>Əməliyyatlar</th>}
                       </tr>
                     </thead>
 
@@ -540,24 +681,30 @@ export default function CompaniesPage() {
 
                           <td>{formatDate(company.created_at)}</td>
 
-                          <td>
-                            <div className="settings-actions">
-                              <button
-                                type="button"
-                                onClick={() => openEditModal(company)}
-                              >
-                                Düzəlt
-                              </button>
+                          {hasRowActions && (
+                            <td>
+                              <div className="settings-actions">
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(company)}
+                                  >
+                                    Düzəlt
+                                  </button>
+                                )}
 
-                              <button
-                                type="button"
-                                className="danger"
-                                onClick={() => setDeleteCompany(company)}
-                              >
-                                Sil
-                              </button>
-                            </div>
-                          </td>
+                                {canDelete && (
+                                  <button
+                                    type="button"
+                                    className="danger"
+                                    onClick={() => openDeleteModal(company)}
+                                  >
+                                    Sil
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -583,22 +730,28 @@ export default function CompaniesPage() {
                         </div>
                       </div>
 
-                      <div className="settings-mobile-actions">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(company)}
-                        >
-                          Düzəlt
-                        </button>
+                      {hasRowActions && (
+                        <div className="settings-mobile-actions">
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(company)}
+                            >
+                              Düzəlt
+                            </button>
+                          )}
 
-                        <button
-                          type="button"
-                          className="danger"
-                          onClick={() => setDeleteCompany(company)}
-                        >
-                          Sil
-                        </button>
-                      </div>
+                          {canDelete && (
+                            <button
+                              type="button"
+                              className="danger"
+                              onClick={() => openDeleteModal(company)}
+                            >
+                              Sil
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </article>
                   ))}
                 </div>
@@ -708,28 +861,32 @@ export default function CompaniesPage() {
         </aside>
       </div>
 
-      <CompanyModal
-        open={modalOpen}
-        visible={modalVisible}
-        editingCompany={editingCompany}
-        form={form}
-        setForm={setForm}
-        saving={saving}
-        error={error}
-        onClose={closeModal}
-        onSubmit={handleSubmit}
-      />
+      {(canCreate || canEdit) && (
+        <CompanyModal
+          open={modalOpen}
+          visible={modalVisible}
+          editingCompany={editingCompany}
+          form={form}
+          setForm={setForm}
+          saving={saving}
+          error={error}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+        />
+      )}
 
-      <DeleteConfirmModal
-        item={deleteCompany}
-        title="Şirkət silinsin?"
-        text="şirkətini silmək üzrəsən. Bu şirkət inventarlara bağlıdırsa silinməyə bilər."
-        deleting={deleting}
-        onClose={() => {
-          if (!deleting) setDeleteCompany(null);
-        }}
-        onConfirm={handleDeleteConfirm}
-      />
+      {canDelete && (
+        <DeleteConfirmModal
+          item={deleteCompany}
+          title="Şirkət silinsin?"
+          text="şirkətini silmək üzrəsən. Bu şirkət inventarlara bağlıdırsa silinməyə bilər."
+          deleting={deleting}
+          onClose={() => {
+            if (!deleting) setDeleteCompany(null);
+          }}
+          onConfirm={handleDeleteConfirm}
+        />
+      )}
     </section>
   );
 }
@@ -763,7 +920,6 @@ function CompanyModal({
       <form className="settings-modal smooth-modal-card" onSubmit={onSubmit}>
         <header className="settings-modal-head">
           <div>
-            
             <h2>{editingCompany ? "Şirkəti düzəlt" : "Yeni şirkət"}</h2>
           </div>
 

@@ -729,3 +729,213 @@
     justify-self: start;
   }
 }
+
+.permissions-warning {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+  border-radius: 18px;
+  padding: 13px 15px;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
+.permissions-warning strong {
+  font-weight: 950;
+}
+
+.permissions-hero p {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.permissions-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  background: #f8fafc;
+  margin-bottom: 14px;
+}
+
+.permissions-quick-actions button {
+  height: 38px;
+  border: 1px solid #dbe3ef;
+  border-radius: 13px;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 0 13px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.permissions-quick-actions button.highlight {
+  border-color: #bbf7d0;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.permissions-quick-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.permissions-role-summary,
+.permissions-user-company-info {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.permissions-user-company-info {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.permissions-role-summary > div,
+.permissions-user-company-info > div {
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 13px;
+}
+
+.permissions-role-summary span,
+.permissions-user-company-info span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  margin-bottom: 7px;
+}
+
+.permissions-role-summary strong,
+.permissions-user-company-info strong {
+  display: block;
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+}
+
+.permissions-user-company-info strong {
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.permission-switch-meta,
+.permission-override-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.permission-action-pill {
+  min-width: 74px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 950;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.permission-action-pill.action-view {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.permission-action-pill.action-export {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #047857;
+}
+
+.permission-action-pill.action-create {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+
+.permission-action-pill.action-edit,
+.permission-action-pill.action-manage,
+.permission-action-pill.action-transfer {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+.permission-action-pill.action-delete {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.permission-switch-row.is-virtual,
+.permission-override-row.is-virtual {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
+.permission-switch-row.is-virtual small,
+.permission-override-row.is-virtual small {
+  color: #b45309;
+}
+
+@media (max-width: 760px) {
+  .permissions-role-summary,
+  .permissions-user-company-info {
+    grid-template-columns: 1fr;
+  }
+
+  .permission-switch-meta,
+  .permission-override-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .permissions-quick-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .permissions-quick-actions button {
+    width: 100%;
+  }
+}
+
+.permissions-readonly-note {
+  margin-top: 10px;
+  color: #b45309;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.permission-switch-row.is-disabled,
+.permission-override-row.is-disabled,
+.override-control.is-disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
+}
+
+.permission-switch-row.is-disabled {
+  pointer-events: none;
+}
+
+.override-control.is-disabled button {
+  cursor: not-allowed;
+}

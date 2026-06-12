@@ -673,3 +673,25 @@
   color: #4338ca;
   border-color: #c7d2fe;
 }
+
+.users-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-secondary-btn {
+  border: 1px solid #dbe3ef;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 14px;
+  min-height: 42px;
+  padding: 0 16px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.settings-secondary-btn:hover {
+  background: #f8fafc;
+}

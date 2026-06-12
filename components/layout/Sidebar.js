@@ -20,61 +20,30 @@ const MENU = [
         label: "Dashboard",
         href: "/dashboard",
         icon: "⌂",
-        roles: [
-          ROLES.ADMIN,
-          ROLES.REHBER,
-          ROLES.USER,
-          ROLES.IZLEYICI,
-          ROLES.VIEWER,
-          ROLES.AUDIT,
-        ],
         permission: "dashboard.view",
       },
       {
         label: "İnventarlar",
         href: "/dashboard/inventory",
         icon: "◈",
-        roles: [
-          ROLES.ADMIN,
-          ROLES.REHBER,
-          ROLES.IZLEYICI,
-          ROLES.VIEWER,
-          ROLES.AUDIT,
-        ],
         permission: "inventory.view",
-      },
-      {
-        label: "Yetkiləndirmə",
-        href: "/dashboard/permissions",
-        icon: "⚙",
-        roles: [ROLES.ADMIN],
-        permission: "permissions.view",
       },
       {
         label: "Yerdəyişmə",
         href: "/dashboard/transfers",
         icon: "⇄",
-        roles: [ROLES.ADMIN, ROLES.REHBER],
         permission: "transfers.view",
       },
       {
         label: "Loglar",
         href: "/dashboard/logs",
         icon: "≣",
-        roles: [
-          ROLES.ADMIN,
-          ROLES.REHBER,
-          ROLES.IZLEYICI,
-          ROLES.VIEWER,
-          ROLES.AUDIT,
-        ],
         permission: "logs.view",
       },
       {
         label: "Mənim inventarlarım",
         href: "/dashboard/my-inventory",
         icon: "◎",
-        roles: [ROLES.ADMIN, ROLES.REHBER, ROLES.USER],
         permission: "my_inventory.view",
       },
     ],
@@ -86,7 +55,6 @@ const MENU = [
         label: "Audit / Hesabatlar",
         href: "/dashboard/audit",
         icon: "◷",
-        roles: [ROLES.ADMIN, ROLES.AUDIT],
         permission: "audit.view",
       },
     ],
@@ -98,29 +66,31 @@ const MENU = [
         label: "Şirkətlər",
         href: "/dashboard/companies",
         icon: "◇",
-        roles: [ROLES.ADMIN],
         permission: "companies.view",
       },
       {
         label: "Departamentlər",
         href: "/dashboard/departments",
         icon: "▤",
-        roles: [ROLES.ADMIN],
         permission: "departments.view",
       },
       {
         label: "Kateqoriyalar",
         href: "/dashboard/categories",
         icon: "▦",
-        roles: [ROLES.ADMIN, ROLES.REHBER],
         permission: "categories.view",
       },
       {
         label: "İstifadəçilər",
         href: "/dashboard/users",
         icon: "◌",
-        roles: [ROLES.ADMIN],
         permission: "users.view",
+      },
+      {
+        label: "Yetkiləndirmə",
+        href: "/dashboard/permissions",
+        icon: "⚙",
+        permission: "permissions.view",
       },
     ],
   },
@@ -168,9 +138,10 @@ function normalizeRole(role) {
 function getCurrentRole(me, role) {
   return normalizeRole(
     role ||
+      me?.role ||
+      me?.role_name ||
       me?.resolved_role ||
       me?.user_role ||
-      me?.role ||
       me?.roles?.name ||
       ROLES.USER
   );
@@ -214,11 +185,25 @@ function getInitials(value) {
 }
 
 function getDisplayName(me) {
-  return me?.full_name || me?.name || me?.display_name || me?.email || "User";
+  return (
+    me?.full_name ||
+    me?.profile?.full_name ||
+    me?.name ||
+    me?.display_name ||
+    me?.email ||
+    me?.profile?.email ||
+    "User"
+  );
 }
 
 function getCompanyName(me) {
-  return me?.companies?.name || me?.company_name || me?.company?.name || "-";
+  return (
+    me?.company_name ||
+    me?.profile?.company_name ||
+    me?.companies?.name ||
+    me?.company?.name ||
+    "-"
+  );
 }
 
 function getPermissionKeys(me) {
@@ -229,35 +214,16 @@ function getPermissionKeys(me) {
   return [];
 }
 
-function hasRoleAccess(item, currentRole) {
-  if (!Array.isArray(item.roles) || item.roles.length === 0) {
-    return true;
-  }
-
-  return item.roles.map(normalizeRole).includes(currentRole);
-}
-
 function hasPermissionAccess(item, permissionKeys, currentRole) {
-  if (!item.permission) {
-    return true;
-  }
+  if (!item.permission) return true;
 
-  if (currentRole === ROLES.ADMIN) {
-    return true;
-  }
-
-  if (!Array.isArray(permissionKeys) || permissionKeys.length === 0) {
-    return false;
-  }
+  if (currentRole === ROLES.ADMIN) return true;
 
   return permissionKeys.includes(item.permission);
 }
 
 function canShowItem(item, currentRole, permissionKeys) {
-  const roleOk = hasRoleAccess(item, currentRole);
-  const permissionOk = hasPermissionAccess(item, permissionKeys, currentRole);
-
-  return roleOk && permissionOk;
+  return hasPermissionAccess(item, permissionKeys, currentRole);
 }
 
 export default function Sidebar({ me, role, open, onClose }) {
@@ -274,7 +240,12 @@ export default function Sidebar({ me, role, open, onClose }) {
   })).filter((group) => group.items.length > 0);
 
   const displayName = getDisplayName(me);
-  const roleLabel = me?.resolved_role_label || getRoleLabel(currentRole);
+  const roleLabel =
+    me?.resolved_role_label ||
+    me?.profile?.role_label ||
+    me?.role_label ||
+    getRoleLabel(currentRole);
+
   const companyName = getCompanyName(me);
 
   return (
@@ -303,31 +274,38 @@ export default function Sidebar({ me, role, open, onClose }) {
         </div>
 
         <div className="dash-sidebar-section">
-          {visibleGroups.map((group) => (
-            <div className="dash-nav-group" key={group.group}>
-              <span className="dash-sidebar-label">{group.group}</span>
-
-              <nav className="dash-nav">
-                {group.items.map((item) => {
-                  const active = isActivePath(pathname, item.href);
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={onClose}
-                      className={`dash-nav-link ${active ? "active" : ""}`}
-                      title={item.label}
-                      aria-current={active ? "page" : undefined}
-                    >
-                      <span className="dash-nav-icon">{item.icon || "•"}</span>
-                      <span className="dash-nav-text">{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </nav>
+          {visibleGroups.length === 0 ? (
+            <div className="dash-nav-empty">
+              <strong>Menu yoxdur</strong>
+              <span>Bu istifadəçiyə hələ səhifə icazəsi verilməyib.</span>
             </div>
-          ))}
+          ) : (
+            visibleGroups.map((group) => (
+              <div className="dash-nav-group" key={group.group}>
+                <span className="dash-sidebar-label">{group.group}</span>
+
+                <nav className="dash-nav">
+                  {group.items.map((item) => {
+                    const active = isActivePath(pathname, item.href);
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={onClose}
+                        className={`dash-nav-link ${active ? "active" : ""}`}
+                        title={item.label}
+                        aria-current={active ? "page" : undefined}
+                      >
+                        <span className="dash-nav-icon">{item.icon || "•"}</span>
+                        <span className="dash-nav-text">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </div>
+            ))
+          )}
         </div>
 
         <div className="dash-sidebar-bottom">

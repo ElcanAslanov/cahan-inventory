@@ -68,13 +68,161 @@ function getRoleLabel(role) {
   return labels[currentRole] || currentRole;
 }
 
-function resolveRole(profile) {
+function makeEmptyCan() {
+  return {
+    inventory: {
+      view: false,
+      export: false,
+      create: false,
+      edit: false,
+      delete: false,
+      qrManage: false,
+      transfer: false,
+    },
+    logs: {
+      view: false,
+      export: false,
+    },
+    companies: {
+      view: false,
+      create: false,
+      edit: false,
+      delete: false,
+    },
+    departments: {
+      view: false,
+      create: false,
+      edit: false,
+      delete: false,
+    },
+    categories: {
+      view: false,
+      create: false,
+      edit: false,
+      delete: false,
+    },
+    users: {
+      view: false,
+      create: false,
+      edit: false,
+      delete: false,
+    },
+    permissions: {
+      view: false,
+      edit: false,
+    },
+  };
+}
+
+function makeCanFromPermissionKeys(permissionKeys) {
+  const set = new Set(Array.isArray(permissionKeys) ? permissionKeys : []);
+
+  return {
+    inventory: {
+      view: set.has("inventory.view"),
+      export: set.has("inventory.export"),
+      create: set.has("inventory.create"),
+      edit: set.has("inventory.edit"),
+      delete: set.has("inventory.delete"),
+      qrManage: set.has("inventory.qr.manage"),
+      transfer: set.has("inventory.transfer"),
+    },
+    logs: {
+      view: set.has("logs.view"),
+      export: set.has("logs.export"),
+    },
+    companies: {
+      view: set.has("companies.view"),
+      create: set.has("companies.create"),
+      edit: set.has("companies.edit"),
+      delete: set.has("companies.delete"),
+    },
+    departments: {
+      view: set.has("departments.view"),
+      create: set.has("departments.create"),
+      edit: set.has("departments.edit"),
+      delete: set.has("departments.delete"),
+    },
+    categories: {
+      view: set.has("categories.view"),
+      create: set.has("categories.create"),
+      edit: set.has("categories.edit"),
+      delete: set.has("categories.delete"),
+    },
+    users: {
+      view: set.has("users.view"),
+      create: set.has("users.create"),
+      edit: set.has("users.edit"),
+      delete: set.has("users.delete"),
+    },
+    permissions: {
+      view: set.has("permissions.view"),
+      edit: set.has("permissions.edit"),
+    },
+  };
+}
+
+function resolveRole(me) {
   return normalizeRole(
-    profile?.user_role ||
-      profile?.resolved_role ||
-      profile?.roles?.name ||
+    me?.role ||
+      me?.role_name ||
+      me?.resolved_role ||
+      me?.user_role ||
+      me?.profile?.role_name ||
+      me?.profile?.user_role ||
+      me?.roles?.name ||
       ROLES.USER
   );
+}
+
+function normalizePermissionsResponse(json) {
+  const profile = json?.profile || null;
+  const permissionKeys = Array.isArray(json?.permissionKeys)
+    ? json.permissionKeys
+    : [];
+
+  const role = normalizeRole(
+    json?.role ||
+      profile?.role_name ||
+      profile?.user_role ||
+      profile?.role_label ||
+      ROLES.USER
+  );
+
+  const can = json?.can || makeCanFromPermissionKeys(permissionKeys);
+
+  const companyAccess = json?.companyAccess || {
+    all: false,
+    companyIds: [],
+  };
+
+  return {
+    ...profile,
+
+    profile,
+
+    id: profile?.id || null,
+    full_name: profile?.full_name || "",
+    email: profile?.email || "",
+    status: profile?.status || "",
+    user_role: profile?.user_role || role,
+    role_id: profile?.role_id || null,
+    company_id: profile?.company_id || null,
+    company_name: profile?.company_name || null,
+    access_scope: json?.accessScope || profile?.access_scope || "OWN_COMPANY",
+
+    role,
+    role_name: role,
+    resolved_role: role,
+    resolved_role_label: profile?.role_label || getRoleLabel(role),
+
+    permissionKeys,
+    permission_keys: permissionKeys,
+    permissions: permissionKeys,
+
+    can,
+    companyAccess,
+  };
 }
 
 export default function DashboardShell({ children }) {
@@ -96,8 +244,7 @@ export default function DashboardShell({ children }) {
     };
   }, [sidebarOpen]);
 
-  async function loadMyPermissions(accessToken) {
-  try {
+  async function loadPermissions(accessToken) {
     const res = await fetch("/api/me/permissions", {
       method: "GET",
       headers: {
@@ -110,16 +257,63 @@ export default function DashboardShell({ children }) {
     const json = text ? JSON.parse(text) : {};
 
     if (!res.ok) {
-      console.warn("DASHBOARD PERMISSIONS WARNING:", json);
-      return [];
+      throw new Error(json?.error || "Permission məlumatları oxunmadı.");
     }
 
-    return Array.isArray(json.permissionKeys) ? json.permissionKeys : [];
-  } catch (err) {
-    console.warn("DASHBOARD PERMISSIONS LOAD ERROR:", err);
-    return [];
+    return normalizePermissionsResponse(json);
   }
-}
+
+  async function loadFallbackProfile(userId) {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select(
+        `
+        id,
+        full_name,
+        email,
+        status,
+        user_role,
+        role_id,
+        company_id,
+        access_scope,
+        companies (
+          id,
+          name
+        )
+      `
+      )
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    if (!profile) {
+      throw new Error("Profil tapılmadı.");
+    }
+
+    const role = normalizeRole(profile.user_role || ROLES.USER);
+    const permissionKeys = [];
+
+    return {
+      ...profile,
+      profile,
+      role,
+      role_name: role,
+      resolved_role: role,
+      resolved_role_label: getRoleLabel(role),
+      company_name: profile.companies?.name || null,
+      permissionKeys,
+      permission_keys: permissionKeys,
+      permissions: permissionKeys,
+      can: makeEmptyCan(),
+      companyAccess: {
+        all: false,
+        companyIds: profile.company_id ? [profile.company_id] : [],
+      },
+    };
+  }
 
   async function loadMe() {
     try {
@@ -142,94 +336,39 @@ export default function DashboardShell({ children }) {
 
       const accessToken = session?.access_token || "";
 
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select(
-          `
-          id,
-          full_name,
-          email,
-          status,
-          user_role,
-          role_id,
-          company_id,
-          access_scope,
-          companies (
-            id,
-            name
-          )
-        `
-        )
-        .eq("id", user.id)
-        .maybeSingle();
+      let finalProfile = null;
 
-      if (profileError) {
-        console.error("DASHBOARD PROFILE ERROR DETAILS:", {
-          message: profileError.message,
-          details: profileError.details,
-          hint: profileError.hint,
-          code: profileError.code,
+      try {
+        finalProfile = await loadPermissions(accessToken);
+      } catch (permissionsError) {
+        console.warn("DASHBOARD PERMISSIONS LOAD WARNING:", {
+          message: permissionsError?.message,
+          raw: permissionsError,
         });
 
-        setError(
-          profileError.message ||
-            profileError.details ||
-            "Profil məlumatları oxunmadı."
-        );
-        return;
+        finalProfile = await loadFallbackProfile(user.id);
       }
 
-      if (!profile) {
+      if (!finalProfile) {
         window.location.href = "/login";
         return;
       }
 
-      if (profile.status !== "ACTIVE") {
+      if (finalProfile.status && finalProfile.status !== "ACTIVE") {
         window.location.href = "/login?error=inactive";
         return;
       }
 
-      const resolvedRole = normalizeRole(profile.user_role || ROLES.USER);
-
-      let roleRow = null;
-
-      const { data: roleByName, error: roleByNameError } = await supabase
-        .from("roles")
-        .select("id,name,label")
-        .eq("name", resolvedRole)
-        .maybeSingle();
-
-      if (!roleByNameError && roleByName) {
-        roleRow = roleByName;
-      } else if (roleByNameError) {
-        console.warn("DASHBOARD ROLE BY NAME WARNING:", {
-          message: roleByNameError.message,
-          details: roleByNameError.details,
-          hint: roleByNameError.hint,
-          code: roleByNameError.code,
-        });
-      }
-
-      const permissionKeys = await loadMyPermissions(accessToken);
-
-      const finalProfile = {
-        ...profile,
-        roles: roleRow,
-        resolved_role: resolvedRole,
-        resolved_role_label: roleRow?.label || getRoleLabel(resolvedRole),
-        permissionKeys,
-        permission_keys: permissionKeys,
-      };
-
       console.log("DASHBOARD ME RESOLVED:", {
         id: finalProfile.id,
         email: finalProfile.email,
-        user_role: finalProfile.user_role,
-        role_id: finalProfile.role_id,
+        role: finalProfile.role,
         resolved_role: finalProfile.resolved_role,
         resolved_role_label: finalProfile.resolved_role_label,
-        roles: finalProfile.roles,
+        access_scope: finalProfile.access_scope,
         permissionKeys: finalProfile.permissionKeys,
+        can: finalProfile.can,
+        companyAccess: finalProfile.companyAccess,
       });
 
       setMe(finalProfile);

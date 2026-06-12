@@ -826,3 +826,24 @@
     transition: none !important;
   }
 }
+
+.dash-nav-empty {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.8);
+  color: #64748b;
+}
+
+.dash-nav-empty strong {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.dash-nav-empty span {
+  font-size: 12px;
+  line-height: 1.4;
+}

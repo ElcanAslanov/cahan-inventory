@@ -83,8 +83,31 @@ function isDateInRange(value, from, to) {
   return true;
 }
 
+async function getAuthHeaders() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${session?.access_token || ""}`,
+  };
+}
+
+function normalizePermissionKeys(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function hasPermission(permissionKeys, key) {
+  return normalizePermissionKeys(permissionKeys).includes(key);
+}
+
 export default function CategoriesPage() {
   const [loading, setLoading] = useState(true);
+  const [permissionLoading, setPermissionLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState("");
+  const [permissionKeys, setPermissionKeys] = useState([]);
+
   const [categories, setCategories] = useState([]);
 
   const [search, setSearch] = useState("");
@@ -112,8 +135,13 @@ export default function CategoriesPage() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
+  const canView = hasPermission(permissionKeys, "categories.view");
+  const canCreate = hasPermission(permissionKeys, "categories.create");
+  const canEdit = hasPermission(permissionKeys, "categories.edit");
+  const canDelete = hasPermission(permissionKeys, "categories.delete");
+
   useEffect(() => {
-    loadCategories();
+    bootPage();
   }, []);
 
   useEffect(() => {
@@ -129,6 +157,48 @@ export default function CategoriesPage() {
 
     return () => window.clearTimeout(timer);
   }, [modalOpen]);
+
+  async function bootPage() {
+    await loadPermissionsAndCategories();
+  }
+
+  async function loadPermissionsAndCategories() {
+    setPermissionLoading(true);
+    setPermissionError("");
+
+    try {
+      const headers = await getAuthHeaders();
+
+      const res = await fetch("/api/me/permissions", {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Permission məlumatı alınmadı.");
+      }
+
+      const keys = normalizePermissionKeys(json.permissionKeys);
+      setPermissionKeys(keys);
+
+      if (!hasPermission(keys, "categories.view")) {
+        setLoading(false);
+        return;
+      }
+
+      await loadCategories();
+    } catch (err) {
+      console.error("CATEGORIES_PERMISSION_ERROR:", err);
+      setPermissionError(err?.message || "Permission məlumatı alınmadı.");
+      setLoading(false);
+    } finally {
+      setPermissionLoading(false);
+    }
+  }
 
   async function loadCategories() {
     setLoading(true);
@@ -214,6 +284,8 @@ export default function CategoriesPage() {
     };
   }, [categories, filteredCategories]);
 
+  const hasRowActions = canEdit || canDelete;
+
   function toggleSort(column) {
     if (sortBy === column) {
       setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -240,6 +312,11 @@ export default function CategoriesPage() {
   }
 
   function openCreateModal() {
+    if (!canCreate) {
+      alert("Yeni kateqoriya əlavə etmək üçün categories.create icazəsi lazımdır.");
+      return;
+    }
+
     setEditingCategory(null);
     setForm({
       name: "",
@@ -250,6 +327,11 @@ export default function CategoriesPage() {
   }
 
   function openEditModal(category) {
+    if (!canEdit) {
+      alert("Kateqoriyanı düzəltmək üçün categories.edit icazəsi lazımdır.");
+      return;
+    }
+
     setEditingCategory(category);
     setForm({
       name: category.name || "",
@@ -257,6 +339,15 @@ export default function CategoriesPage() {
     });
     setError("");
     setModalOpen(true);
+  }
+
+  function openDeleteModal(category) {
+    if (!canDelete) {
+      alert("Kateqoriyanı silmək üçün categories.delete icazəsi lazımdır.");
+      return;
+    }
+
+    setDeleteCategory(category);
   }
 
   function closeModal() {
@@ -273,6 +364,16 @@ export default function CategoriesPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+
+    if (editingCategory?.id && !canEdit) {
+      setError("Bu əməliyyat üçün categories.edit icazəsi lazımdır.");
+      return;
+    }
+
+    if (!editingCategory?.id && !canCreate) {
+      setError("Bu əməliyyat üçün categories.create icazəsi lazımdır.");
+      return;
+    }
 
     const name = form.name.trim();
 
@@ -321,6 +422,11 @@ export default function CategoriesPage() {
   async function handleDeleteConfirm() {
     if (!deleteCategory?.id) return;
 
+    if (!canDelete) {
+      alert("Bu əməliyyat üçün categories.delete icazəsi lazımdır.");
+      return;
+    }
+
     setDeleting(true);
 
     const { error } = await supabase
@@ -353,24 +459,61 @@ export default function CategoriesPage() {
     setPage(1);
   }
 
+  if (permissionLoading || loading) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">Kateqoriyalar yüklənir...</div>
+      </section>
+    );
+  }
+
+  if (permissionError) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Permission xətası</strong>
+          <p>{permissionError}</p>
+          <button type="button" onClick={loadPermissionsAndCategories}>
+            Yenidən yoxla
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <section className="settings-page">
+        <div className="settings-empty">
+          <strong>Giriş icazəsi yoxdur</strong>
+          <p>
+            Bu səhifəyə baxmaq üçün <b>categories.view</b> icazəsi lazımdır.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="settings-page">
       <div className="settings-hero categories-hero-modern">
         <div>
           <h1>Kateqoriyalar</h1>
           <p>
-            İnventarların qruplaşdırılması üçün kateqoriyaları idarə et,
-            filterlə, sırala və ümumi vəziyyəti analiz et.
+            İnventarların qruplaşdırılması üçün kateqoriyaları filterlə, sırala
+            və ümumi vəziyyəti analiz et.
           </p>
         </div>
 
-        <button
-          type="button"
-          className="settings-primary-btn"
-          onClick={openCreateModal}
-        >
-          + Yeni kateqoriya
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            className="settings-primary-btn"
+            onClick={openCreateModal}
+          >
+            + Yeni kateqoriya
+          </button>
+        )}
       </div>
 
       <div className="categories-modern-grid">
@@ -452,29 +595,27 @@ export default function CategoriesPage() {
           <div className="settings-summary categories-summary-modern">
             <div>
               <span>Göstərilən</span>
-              <strong>{loading ? "..." : summary.shown}</strong>
+              <strong>{summary.shown}</strong>
             </div>
 
             <div>
               <span>Ümumi</span>
-              <strong>{loading ? "..." : summary.total}</strong>
+              <strong>{summary.total}</strong>
             </div>
 
             <div>
               <span>Aktiv</span>
-              <strong>{loading ? "..." : summary.active}</strong>
+              <strong>{summary.active}</strong>
             </div>
 
             <div>
               <span>Passiv</span>
-              <strong>{loading ? "..." : summary.inactive}</strong>
+              <strong>{summary.inactive}</strong>
             </div>
           </div>
 
           <div className="settings-table-card">
-            {loading ? (
-              <div className="settings-empty">Kateqoriyalar yüklənir...</div>
-            ) : filteredCategories.length === 0 ? (
+            {filteredCategories.length === 0 ? (
               <div className="settings-empty">
                 <strong>Kateqoriya tapılmadı</strong>
                 <p>Hazırda bu filterlərə uyğun kateqoriya yoxdur.</p>
@@ -513,7 +654,7 @@ export default function CategoriesPage() {
                           </button>
                         </th>
 
-                        <th>Əməliyyatlar</th>
+                        {hasRowActions && <th>Əməliyyatlar</th>}
                       </tr>
                     </thead>
 
@@ -542,24 +683,30 @@ export default function CategoriesPage() {
 
                           <td>{formatDate(category.created_at)}</td>
 
-                          <td>
-                            <div className="settings-actions">
-                              <button
-                                type="button"
-                                onClick={() => openEditModal(category)}
-                              >
-                                Düzəlt
-                              </button>
+                          {hasRowActions && (
+                            <td>
+                              <div className="settings-actions">
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(category)}
+                                  >
+                                    Düzəlt
+                                  </button>
+                                )}
 
-                              <button
-                                type="button"
-                                className="danger"
-                                onClick={() => setDeleteCategory(category)}
-                              >
-                                Sil
-                              </button>
-                            </div>
-                          </td>
+                                {canDelete && (
+                                  <button
+                                    type="button"
+                                    className="danger"
+                                    onClick={() => openDeleteModal(category)}
+                                  >
+                                    Sil
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -585,22 +732,28 @@ export default function CategoriesPage() {
                         </div>
                       </div>
 
-                      <div className="settings-mobile-actions">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(category)}
-                        >
-                          Düzəlt
-                        </button>
+                      {hasRowActions && (
+                        <div className="settings-mobile-actions">
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(category)}
+                            >
+                              Düzəlt
+                            </button>
+                          )}
 
-                        <button
-                          type="button"
-                          className="danger"
-                          onClick={() => setDeleteCategory(category)}
-                        >
-                          Sil
-                        </button>
-                      </div>
+                          {canDelete && (
+                            <button
+                              type="button"
+                              className="danger"
+                              onClick={() => openDeleteModal(category)}
+                            >
+                              Sil
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </article>
                   ))}
                 </div>
@@ -712,28 +865,32 @@ export default function CategoriesPage() {
         </aside>
       </div>
 
-      <CategoryModal
-        open={modalOpen}
-        visible={modalVisible}
-        editingCategory={editingCategory}
-        form={form}
-        setForm={setForm}
-        saving={saving}
-        error={error}
-        onClose={closeModal}
-        onSubmit={handleSubmit}
-      />
+      {(canCreate || canEdit) && (
+        <CategoryModal
+          open={modalOpen}
+          visible={modalVisible}
+          editingCategory={editingCategory}
+          form={form}
+          setForm={setForm}
+          saving={saving}
+          error={error}
+          onClose={closeModal}
+          onSubmit={handleSubmit}
+        />
+      )}
 
-      <DeleteConfirmModal
-        item={deleteCategory}
-        title="Kateqoriya silinsin?"
-        text="kateqoriyasını silmək üzrəsən. Bu kateqoriya inventarlara bağlıdırsa silinməyə bilər."
-        deleting={deleting}
-        onClose={() => {
-          if (!deleting) setDeleteCategory(null);
-        }}
-        onConfirm={handleDeleteConfirm}
-      />
+      {canDelete && (
+        <DeleteConfirmModal
+          item={deleteCategory}
+          title="Kateqoriya silinsin?"
+          text="kateqoriyasını silmək üzrəsən. Bu kateqoriya inventarlara bağlıdırsa silinməyə bilər."
+          deleting={deleting}
+          onClose={() => {
+            if (!deleting) setDeleteCategory(null);
+          }}
+          onConfirm={handleDeleteConfirm}
+        />
+      )}
     </section>
   );
 }
@@ -767,7 +924,6 @@ function CategoryModal({
       <form className="settings-modal smooth-modal-card" onSubmit={onSubmit}>
         <header className="settings-modal-head">
           <div>
-            
             <h2>
               {editingCategory ? "Kateqoriyanı düzəlt" : "Yeni kateqoriya"}
             </h2>

@@ -27,14 +27,135 @@ const TABS = [
   },
 ];
 
+const IMPORTANT_PERMISSION_KEYS = [
+  "dashboard.view",
+
+  "inventory.view",
+  "inventory.export",
+  "inventory.create",
+  "inventory.edit",
+  "inventory.delete",
+  "inventory.qr.manage",
+  "inventory.transfer",
+
+  "transfers.view",
+  "transfers.create",
+  "transfers.edit",
+  "transfers.delete",
+
+  "logs.view",
+  "logs.export",
+
+  "companies.view",
+  "companies.create",
+  "companies.edit",
+  "companies.delete",
+
+  "departments.view",
+  "departments.create",
+  "departments.edit",
+  "departments.delete",
+
+  "categories.view",
+  "categories.create",
+  "categories.edit",
+  "categories.delete",
+
+  "users.view",
+  "users.export",
+  "users.create",
+  "users.edit",
+  "users.delete",
+
+  "permissions.view",
+  "permissions.edit",
+
+  "my_inventory.view",
+  "my_inventory.export",
+
+  "audit.view",
+  "audit.export",
+];
+
+const DEFAULT_LABELS = {
+  "dashboard.view": "Dashboard görsün",
+
+  "inventory.view": "İnventarlara baxsın",
+  "inventory.export": "İnventar export etsin",
+  "inventory.create": "Yeni inventar əlavə etsin",
+  "inventory.edit": "İnventarı düzəltsin",
+  "inventory.delete": "İnventarı silsin",
+  "inventory.qr.manage": "QR yaratsın / idarə etsin",
+  "inventory.transfer": "İnventar təhkim / transfer etsin",
+
+  "transfers.view": "Yerdəyişmə səhifəsinə baxsın",
+  "transfers.create": "Yerdəyişmə yaratsın",
+  "transfers.edit": "Yerdəyişməni düzəltsin",
+  "transfers.delete": "Yerdəyişməni silsin",
+
+  "logs.view": "Loglara baxsın",
+  "logs.export": "Log export etsin",
+
+  "companies.view": "Şirkətlərə baxsın",
+  "companies.create": "Şirkət əlavə etsin",
+  "companies.edit": "Şirkəti düzəltsin",
+  "companies.delete": "Şirkəti silsin",
+
+  "departments.view": "Departamentlərə baxsın",
+  "departments.create": "Departament əlavə etsin",
+  "departments.edit": "Departamenti düzəltsin",
+  "departments.delete": "Departamenti silsin",
+
+  "categories.view": "Kateqoriyalara baxsın",
+  "categories.create": "Kateqoriya əlavə etsin",
+  "categories.edit": "Kateqoriyanı düzəltsin",
+  "categories.delete": "Kateqoriyanı silsin",
+
+  "users.view": "İstifadəçilərə baxsın",
+  "users.export": "İstifadəçiləri export etsin",
+  "users.create": "İstifadəçi əlavə etsin",
+  "users.edit": "İstifadəçini düzəltsin",
+  "users.delete": "İstifadəçini silsin",
+
+  "permissions.view": "Yetkiləndirməyə baxsın",
+  "permissions.edit": "Yetkiləndirməni dəyişsin",
+
+  "my_inventory.view": "Mənim inventarlarım səhifəsinə baxsın",
+  "my_inventory.export": "Mənim inventarlarım export etsin",
+
+  "audit.view": "Audit / hesabatlara baxsın",
+  "audit.export": "Audit / hesabat export etsin",
+};
+
+const DEFAULT_GROUPS = {
+  dashboard: "Əsas",
+  inventory: "İnventarlar",
+  transfers: "Yerdəyişmə",
+  logs: "Loglar",
+  companies: "Şirkətlər",
+  departments: "Departamentlər",
+  categories: "Kateqoriyalar",
+  users: "İstifadəçilər",
+  permissions: "Yetkiləndirmə",
+  my_inventory: "Mənim inventarlarım",
+  audit: "Audit / Hesabat",
+};
+
 function normalizeRole(value) {
   const role = String(value || "").trim().toUpperCase();
 
-  if (role === "RƏHBƏR" || role === "REHBƏR" || role === "RƏHBER") {
+  if (role === "ADMIN") return "ADMIN";
+
+  if (
+    role === "RƏHBƏR" ||
+    role === "REHBƏR" ||
+    role === "RƏHBER" ||
+    role === "REHBER"
+  ) {
     return "REHBER";
   }
 
-  if (role === "AUDİT" || role === "AUDITOR") {
+  if (role === "AUDİT" || role === "AUDIT" || role === "AUDITOR") {
     return "AUDIT";
   }
 
@@ -42,12 +163,17 @@ function normalizeRole(value) {
     role === "İZLEYICI" ||
     role === "İZLƏYİCİ" ||
     role === "IZLƏYICI" ||
+    role === "IZLEYICI" ||
     role === "VIEWER"
   ) {
     return "IZLEYICI";
   }
 
-  if (role === "İSTİFADƏÇİ" || role === "ISTIFADECI") {
+  if (
+    role === "İSTİFADƏÇİ" ||
+    role === "ISTIFADECI" ||
+    role === "USER"
+  ) {
     return "USER";
   }
 
@@ -55,6 +181,14 @@ function normalizeRole(value) {
 }
 
 function roleLabel(role) {
+  const normalized = normalizeRole(role?.name || role?.label || "");
+
+  if (normalized === "ADMIN") return role?.label || "Admin";
+  if (normalized === "REHBER") return role?.label || "Rəhbər";
+  if (normalized === "IZLEYICI") return role?.label || "İzləyici";
+  if (normalized === "AUDIT") return role?.label || "Audit";
+  if (normalized === "USER") return role?.label || "İstifadəçi";
+
   return role?.label || role?.name || "-";
 }
 
@@ -62,22 +196,83 @@ function userLabel(user) {
   return user?.full_name || user?.email || user?.id || "-";
 }
 
+function permissionGroupName(permission) {
+  if (permission.group_name) return permission.group_name;
+
+  const prefix = String(permission.key || "").split(".")[0];
+
+  return DEFAULT_GROUPS[prefix] || "Ümumi";
+}
+
+function permissionLabel(permission) {
+  return permission.label || DEFAULT_LABELS[permission.key] || permission.key;
+}
+
+function permissionActionType(permission) {
+  const key = String(permission.key || "");
+  const action = key.split(".").pop();
+
+  if (action === "view") return "view";
+  if (action === "export") return "export";
+  if (action === "create") return "create";
+  if (action === "edit") return "edit";
+  if (action === "delete") return "delete";
+  if (action === "transfer") return "transfer";
+  if (action === "manage") return "manage";
+
+  if (key.includes("qr.manage")) return "manage";
+
+  return "other";
+}
+
+function permissionSortWeight(permission) {
+  const action = permissionActionType(permission);
+
+  const order = {
+    view: 1,
+    export: 2,
+    create: 3,
+    edit: 4,
+    delete: 5,
+    transfer: 6,
+    manage: 7,
+    other: 99,
+  };
+
+  return order[action] || 99;
+}
+
+function normalizePermission(permission) {
+  return {
+    ...permission,
+    label: permissionLabel(permission),
+    group_name: permissionGroupName(permission),
+    action_type: permissionActionType(permission),
+  };
+}
+
 function groupByPermission(permissions) {
   const map = new Map();
 
   permissions.forEach((permission) => {
-    const group = permission.group_name || "Ümumi";
+    const normalized = normalizePermission(permission);
+    const group = normalized.group_name || "Ümumi";
 
     if (!map.has(group)) {
       map.set(group, []);
     }
 
-    map.get(group).push(permission);
+    map.get(group).push(normalized);
   });
 
   return Array.from(map.entries()).map(([group, items]) => ({
     group,
-    items,
+    items: items.sort((a, b) => {
+      const weightDiff = permissionSortWeight(a) - permissionSortWeight(b);
+      if (weightDiff !== 0) return weightDiff;
+
+      return String(a.key || "").localeCompare(String(b.key || ""), "az");
+    }),
   }));
 }
 
@@ -92,9 +287,21 @@ async function getAuthHeaders() {
   };
 }
 
+function normalizePermissionKeys(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
+function hasPermission(permissionKeys, key) {
+  return normalizePermissionKeys(permissionKeys).includes(key);
+}
+
 export default function PermissionsPage() {
   const [loading, setLoading] = useState(true);
+  const [permissionLoading, setPermissionLoading] = useState(true);
+  const [permissionError, setPermissionError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [myPermissionKeys, setMyPermissionKeys] = useState([]);
 
   const [permissions, setPermissions] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -123,13 +330,20 @@ export default function PermissionsPage() {
   const [searchCompany, setSearchCompany] = useState("");
   const [searchUser, setSearchUser] = useState("");
 
+  const canView = hasPermission(myPermissionKeys, "permissions.view");
+  const canEdit = hasPermission(myPermissionKeys, "permissions.edit");
+
   useEffect(() => {
-    loadData();
+    bootPage();
   }, []);
 
   useEffect(() => {
     if (!selectedRoleId && roles.length > 0) {
-      setSelectedRoleId(roles[0].id);
+      const izleyici = roles.find(
+        (role) => normalizeRole(role.name || role.label) === "IZLEYICI"
+      );
+
+      setSelectedRoleId(izleyici?.id || roles[0].id);
     }
   }, [roles, selectedRoleId]);
 
@@ -201,6 +415,44 @@ export default function PermissionsPage() {
     );
   }, [selectedUserId, userPermissions, userCompanyAccess]);
 
+  async function bootPage() {
+    setPermissionLoading(true);
+    setPermissionError("");
+
+    try {
+      const headers = await getAuthHeaders();
+
+      const res = await fetch("/api/me/permissions", {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Permission məlumatı alınmadı.");
+      }
+
+      const keys = normalizePermissionKeys(json.permissionKeys);
+      setMyPermissionKeys(keys);
+
+      if (!hasPermission(keys, "permissions.view")) {
+        setLoading(false);
+        return;
+      }
+
+      await loadData();
+    } catch (err) {
+      console.error("PERMISSIONS_VIEW_CHECK_ERROR:", err);
+      setPermissionError(err?.message || "Permission məlumatı alınmadı.");
+      setLoading(false);
+    } finally {
+      setPermissionLoading(false);
+    }
+  }
+
   async function loadData() {
     setLoading(true);
 
@@ -220,7 +472,10 @@ export default function PermissionsPage() {
         throw new Error(json.error || "Yetkilər yüklənərkən xəta baş verdi.");
       }
 
-      setPermissions(json.permissions || []);
+      const receivedPermissions = json.permissions || [];
+      const ensuredPermissions = ensureImportantPermissions(receivedPermissions);
+
+      setPermissions(ensuredPermissions);
       setRoles(json.roles || []);
       setCompanies(json.companies || []);
       setUsers(json.users || []);
@@ -236,6 +491,44 @@ export default function PermissionsPage() {
     }
   }
 
+  function ensureImportantPermissions(list) {
+    const byKey = new Map();
+
+    (list || []).forEach((permission) => {
+      if (permission?.key) {
+        byKey.set(permission.key, normalizePermission(permission));
+      }
+    });
+
+    IMPORTANT_PERMISSION_KEYS.forEach((key) => {
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          id: `virtual-${key}`,
+          key,
+          label: DEFAULT_LABELS[key] || key,
+          group_name: DEFAULT_GROUPS[key.split(".")[0]] || "Ümumi",
+          description:
+            "Bu permission bazada yoxdursa /api/admin/permissions seed hissəsinə əlavə edilməlidir.",
+          virtual: true,
+        });
+      }
+    });
+
+    return Array.from(byKey.values()).sort((a, b) => {
+      const groupCompare = permissionGroupName(a).localeCompare(
+        permissionGroupName(b),
+        "az"
+      );
+
+      if (groupCompare !== 0) return groupCompare;
+
+      const weightDiff = permissionSortWeight(a) - permissionSortWeight(b);
+      if (weightDiff !== 0) return weightDiff;
+
+      return String(a.key || "").localeCompare(String(b.key || ""), "az");
+    });
+  }
+
   const activeTabData = useMemo(() => {
     return TABS.find((tab) => tab.key === activeTab) || TABS[0];
   }, [activeTab]);
@@ -247,6 +540,10 @@ export default function PermissionsPage() {
   const selectedUser = useMemo(() => {
     return users.find((user) => user.id === selectedUserId) || null;
   }, [users, selectedUserId]);
+
+  const selectedRoleNormalized = useMemo(() => {
+    return normalizeRole(selectedRole?.name || selectedRole?.label);
+  }, [selectedRole]);
 
   const companyMap = useMemo(() => {
     const map = new Map();
@@ -286,7 +583,8 @@ export default function PermissionsPage() {
       return (
         String(permission.key || "").toLowerCase().includes(q) ||
         String(permission.label || "").toLowerCase().includes(q) ||
-        String(permission.group_name || "").toLowerCase().includes(q)
+        String(permission.group_name || "").toLowerCase().includes(q) ||
+        String(permission.description || "").toLowerCase().includes(q)
       );
     });
   }, [permissions, searchPermission]);
@@ -360,12 +658,32 @@ export default function PermissionsPage() {
 
   const pageStats = useMemo(() => {
     return {
-      permissions: permissions.length,
+      permissions: permissions.filter((x) => !x.virtual).length,
+      virtualPermissions: permissions.filter((x) => x.virtual).length,
       roles: roles.length,
       users: users.length,
       companies: companies.length,
     };
   }, [permissions, roles, users, companies]);
+
+  const selectedRolePermissionSummary = useMemo(() => {
+    const keys = permissions
+      .filter((permission) => rolePermissionIds.includes(permission.id))
+      .map((permission) => permission.key);
+
+    return {
+      view: keys.filter((key) => key.endsWith(".view")).length,
+      export: keys.filter((key) => key.endsWith(".export")).length,
+      write: keys.filter(
+        (key) =>
+          key.endsWith(".create") ||
+          key.endsWith(".edit") ||
+          key.endsWith(".delete") ||
+          key.endsWith(".transfer") ||
+          key.includes(".manage")
+      ).length,
+    };
+  }, [permissions, rolePermissionIds]);
 
   function getUserRoleText(user) {
     return user?.user_role || user?.role || "-";
@@ -398,7 +716,27 @@ export default function PermissionsPage() {
     return getUserCompanyText(user);
   }
 
+  function isVirtualPermissionId(permissionId) {
+    return String(permissionId || "").startsWith("virtual-");
+  }
+
+  function ensureEditable() {
+    if (canEdit) return true;
+
+    alert("Bu əməliyyat üçün permissions.edit icazəsi lazımdır.");
+    return false;
+  }
+
   function toggleArrayValue(setter, value) {
+    if (!ensureEditable()) return;
+
+    if (isVirtualPermissionId(value)) {
+      alert(
+        "Bu permission hələ bazada yoxdur. Əvvəlcə /api/admin/permissions seed hissəsinə əlavə edilməlidir."
+      );
+      return;
+    }
+
     setter((prev) => {
       if (prev.includes(value)) {
         return prev.filter((x) => x !== value);
@@ -409,6 +747,15 @@ export default function PermissionsPage() {
   }
 
   function setUserPermissionEffect(permissionId, effect) {
+    if (!ensureEditable()) return;
+
+    if (isVirtualPermissionId(permissionId)) {
+      alert(
+        "Bu permission hələ bazada yoxdur. Əvvəlcə /api/admin/permissions seed hissəsinə əlavə edilməlidir."
+      );
+      return;
+    }
+
     setUserAllowPermissionIds((prev) => prev.filter((id) => id !== permissionId));
     setUserDenyPermissionIds((prev) => prev.filter((id) => id !== permissionId));
 
@@ -422,6 +769,8 @@ export default function PermissionsPage() {
   }
 
   function setUserCompanyEffect(companyId, effect) {
+    if (!ensureEditable()) return;
+
     setUserAllowCompanyIds((prev) => prev.filter((id) => id !== companyId));
     setUserDenyCompanyIds((prev) => prev.filter((id) => id !== companyId));
 
@@ -434,8 +783,73 @@ export default function PermissionsPage() {
     }
   }
 
+  function applyIzleyiciDefaultPermissions() {
+    if (!ensureEditable()) return;
+
+    const ids = permissions
+      .filter((permission) =>
+        [
+          "dashboard.view",
+          "inventory.view",
+          "inventory.export",
+          "logs.view",
+          "logs.export",
+          "companies.view",
+          "departments.view",
+          "categories.view",
+          "users.view",
+          "users.export",
+          "my_inventory.view",
+          "my_inventory.export",
+        ].includes(permission.key)
+      )
+      .filter((permission) => !permission.virtual)
+      .map((permission) => permission.id);
+
+    setRolePermissionIds(ids);
+  }
+
+  function selectViewExportOnly() {
+    if (!ensureEditable()) return;
+
+    const ids = permissions
+      .filter((permission) => {
+        if (permission.virtual) return false;
+
+        const key = String(permission.key || "");
+
+        return key.endsWith(".view") || key.endsWith(".export");
+      })
+      .map((permission) => permission.id);
+
+    setRolePermissionIds(ids);
+  }
+
+  function removeWritePermissions() {
+    if (!ensureEditable()) return;
+
+    const writeKeys = permissions
+      .filter((permission) => {
+        const key = String(permission.key || "");
+
+        return (
+          key.endsWith(".create") ||
+          key.endsWith(".edit") ||
+          key.endsWith(".delete") ||
+          key.endsWith(".transfer") ||
+          key.includes(".manage")
+        );
+      })
+      .map((permission) => permission.id);
+
+    setRolePermissionIds((prev) =>
+      prev.filter((permissionId) => !writeKeys.includes(permissionId))
+    );
+  }
+
   async function saveRolePermissions() {
     if (!selectedRoleId) return;
+    if (!ensureEditable()) return;
 
     setSaving(true);
 
@@ -448,7 +862,9 @@ export default function PermissionsPage() {
         body: JSON.stringify({
           mode: "ROLE_PERMISSIONS",
           role_id: selectedRoleId,
-          permission_ids: rolePermissionIds,
+          permission_ids: rolePermissionIds.filter(
+            (id) => !isVirtualPermissionId(id)
+          ),
         }),
       });
 
@@ -469,6 +885,7 @@ export default function PermissionsPage() {
 
   async function saveUserPermissions() {
     if (!selectedUserId) return;
+    if (!ensureEditable()) return;
 
     setSaving(true);
 
@@ -481,8 +898,12 @@ export default function PermissionsPage() {
         body: JSON.stringify({
           mode: "USER_PERMISSIONS",
           user_id: selectedUserId,
-          allow_permission_ids: userAllowPermissionIds,
-          deny_permission_ids: userDenyPermissionIds,
+          allow_permission_ids: userAllowPermissionIds.filter(
+            (id) => !isVirtualPermissionId(id)
+          ),
+          deny_permission_ids: userDenyPermissionIds.filter(
+            (id) => !isVirtualPermissionId(id)
+          ),
         }),
       });
 
@@ -505,6 +926,7 @@ export default function PermissionsPage() {
 
   async function saveRoleCompanies() {
     if (!selectedRoleId) return;
+    if (!ensureEditable()) return;
 
     setSaving(true);
 
@@ -540,6 +962,7 @@ export default function PermissionsPage() {
 
   async function saveUserCompanies() {
     if (!selectedUserId) return;
+    if (!ensureEditable()) return;
 
     setSaving(true);
 
@@ -590,13 +1013,61 @@ export default function PermissionsPage() {
     return "NONE";
   }
 
+  if (permissionLoading || loading) {
+    return (
+      <section className="permissions-page">
+        <div className="permissions-empty">
+          <span className="permissions-loader" />
+          <strong>Yetkilər yüklənir...</strong>
+          <p>Rol, istifadəçi və şirkət access məlumatları hazırlanır.</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (permissionError) {
+    return (
+      <section className="permissions-page">
+        <div className="permissions-empty">
+          <strong>Permission xətası</strong>
+          <p>{permissionError}</p>
+          <button type="button" onClick={bootPage}>
+            Yenidən yoxla
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <section className="permissions-page">
+        <div className="permissions-empty">
+          <strong>Giriş icazəsi yoxdur</strong>
+          <p>
+            Bu səhifəyə baxmaq üçün <b>permissions.view</b> icazəsi lazımdır.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="permissions-page">
       <div className="permissions-hero">
         <div>
-          
           <h1>Yetkiləndirmə</h1>
-      
+          <p>
+            Rollar və istifadəçilər üçün səhifə görünüşü, export və dəyişiklik
+            icazələrini idarə et.
+          </p>
+
+          {!canEdit && (
+            <p className="permissions-readonly-note">
+              Bu hesabda yalnız baxış icazəsi var. Dəyişiklik etmək üçün{" "}
+              <b>permissions.edit</b> icazəsi lazımdır.
+            </p>
+          )}
         </div>
 
         <div className="permissions-hero-actions">
@@ -616,6 +1087,15 @@ export default function PermissionsPage() {
         </div>
       </div>
 
+      {pageStats.virtualPermissions > 0 && (
+        <div className="permissions-warning">
+          <strong>Diqqət:</strong>{" "}
+          {pageStats.virtualPermissions} permission açarı UI-da göstərilir, amma
+          bazada yoxdur. Bu açarları `/api/admin/permissions` seed hissəsinə
+          əlavə etmək lazımdır.
+        </div>
+      )}
+
       <div className="permissions-tabs">
         {TABS.map((tab) => (
           <button
@@ -630,312 +1110,387 @@ export default function PermissionsPage() {
         ))}
       </div>
 
-      {loading ? (
-        <div className="permissions-empty">
-          <span className="permissions-loader" />
-          <strong>Yetkilər yüklənir...</strong>
-          <p>Rol, istifadəçi və şirkət access məlumatları hazırlanır.</p>
-        </div>
-      ) : (
-        <>
-          {(activeTab === "ROLE_PERMISSIONS" ||
-            activeTab === "ROLE_COMPANIES") && (
-            <div className="permissions-layout">
-              <aside className="permissions-side-card">
-                <div className="permissions-side-head">
-                  <div>
-                    
-                    <h3>Rollar</h3>
-                  </div>
+      {(activeTab === "ROLE_PERMISSIONS" ||
+        activeTab === "ROLE_COMPANIES") && (
+        <div className="permissions-layout">
+          <aside className="permissions-side-card">
+            <div className="permissions-side-head">
+              <div>
+                <h3>Rollar</h3>
+              </div>
 
-                  <b>{roles.length}</b>
-                </div>
-
-                <div className="permissions-list">
-                  {roles.map((role) => (
-                    <button
-                      key={role.id}
-                      type="button"
-                      className={selectedRoleId === role.id ? "active" : ""}
-                      onClick={() => setSelectedRoleId(role.id)}
-                    >
-                      <div>
-                        <strong>{roleLabel(role)}</strong>
-                        <span>{role.name}</span>
-                      </div>
-
-                      <em>{selectedRoleId === role.id ? "Aktiv" : "Seç"}</em>
-                    </button>
-                  ))}
-                </div>
-              </aside>
-
-              <main className="permissions-main-card">
-                {activeTab === "ROLE_PERMISSIONS" ? (
-                  <>
-                    <div className="permissions-card-head">
-                      <div>
-                        <span>{activeTabData.desc}</span>
-                        
-                      </div>
-
-                      <button
-                        type="button"
-                        className="primary"
-                        onClick={saveRolePermissions}
-                        disabled={saving}
-                      >
-                        {saving ? "Saxlanılır..." : "Yadda saxla"}
-                      </button>
-                    </div>
-
-                    <div className="permissions-toolbar">
-                      <input
-                        className="permissions-search"
-                        placeholder="Permission adı, açarı və ya qrup üzrə axtar..."
-                        value={searchPermission}
-                        onChange={(e) => setSearchPermission(e.target.value)}
-                      />
-
-                      <div className="permissions-counter-pill">
-                        <strong>{rolePermissionIds.length}</strong>
-                        <span>aktiv icazə</span>
-                      </div>
-                    </div>
-
-                    <PermissionSwitchList
-                      groups={permissionGroups}
-                      checkedIds={rolePermissionIds}
-                      onToggle={(permissionId) =>
-                        toggleArrayValue(setRolePermissionIds, permissionId)
-                      }
-                    />
-                  </>
-                ) : (
-                  <>
-                    <div className="permissions-card-head">
-                      <div>
-                        <span>{activeTabData.desc}</span>
-                        
-                      </div>
-
-                      <button
-                        type="button"
-                        className="primary"
-                        onClick={saveRoleCompanies}
-                        disabled={saving}
-                      >
-                        {saving ? "Saxlanılır..." : "Yadda saxla"}
-                      </button>
-                    </div>
-
-                    <div className="permissions-toolbar">
-                      <input
-                        className="permissions-search"
-                        placeholder="Şirkət axtar..."
-                        value={searchCompany}
-                        onChange={(e) => setSearchCompany(e.target.value)}
-                      />
-
-                      <div className="permissions-counter-pill">
-                        <strong>{roleCompanyIds.length}</strong>
-                        <span>şirkət</span>
-                      </div>
-                    </div>
-
-                    <CompanySwitchList
-                      companies={filteredCompanies}
-                      checkedIds={roleCompanyIds}
-                      onToggle={(companyId) =>
-                        toggleArrayValue(setRoleCompanyIds, companyId)
-                      }
-                    />
-                  </>
-                )}
-              </main>
+              <b>{roles.length}</b>
             </div>
-          )}
 
-          {(activeTab === "USER_PERMISSIONS" ||
-            activeTab === "USER_COMPANIES") && (
-            <div className="permissions-layout">
-              <aside className="permissions-side-card">
-                <div className="permissions-side-head">
+            <div className="permissions-list">
+              {roles.map((role) => {
+                const normalized = normalizeRole(role.name || role.label);
+
+                return (
+                  <button
+                    key={role.id}
+                    type="button"
+                    className={selectedRoleId === role.id ? "active" : ""}
+                    onClick={() => setSelectedRoleId(role.id)}
+                  >
+                    <div>
+                      <strong>{roleLabel(role)}</strong>
+                      <span>{role.name}</span>
+                    </div>
+
+                    <em>
+                      {selectedRoleId === role.id
+                        ? normalized === "IZLEYICI"
+                          ? "İzləyici"
+                          : "Aktiv"
+                        : "Seç"}
+                    </em>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          <main className="permissions-main-card">
+            {activeTab === "ROLE_PERMISSIONS" ? (
+              <>
+                <div className="permissions-card-head">
                   <div>
-                    
-                    <h3>İstifadəçilər</h3>
+                    <span>{activeTabData.desc}</span>
+                    <h2>{selectedRole ? roleLabel(selectedRole) : "Rol"}</h2>
                   </div>
 
-                  <b>{users.length}</b>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={saveRolePermissions}
+                      disabled={saving}
+                    >
+                      {saving ? "Saxlanılır..." : "Yadda saxla"}
+                    </button>
+                  )}
                 </div>
 
-                <input
-                  className="permissions-search small"
-                  placeholder="Ad, email, rol, access scope və ya şirkət üzrə axtar..."
-                  value={searchUser}
-                  onChange={(e) => setSearchUser(e.target.value)}
+                {canEdit && (
+                  <div className="permissions-quick-actions">
+                    <button
+                      type="button"
+                      onClick={selectViewExportOnly}
+                      disabled={saving}
+                    >
+                      View + Export seç
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={removeWritePermissions}
+                      disabled={saving}
+                    >
+                      Create/Edit/Delete bağla
+                    </button>
+
+                    {selectedRoleNormalized === "IZLEYICI" && (
+                      <button
+                        type="button"
+                        className="highlight"
+                        onClick={applyIzleyiciDefaultPermissions}
+                        disabled={saving}
+                      >
+                        İzləyici default ver
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div className="permissions-role-summary">
+                  <div>
+                    <span>View</span>
+                    <strong>{selectedRolePermissionSummary.view}</strong>
+                  </div>
+
+                  <div>
+                    <span>Export</span>
+                    <strong>{selectedRolePermissionSummary.export}</strong>
+                  </div>
+
+                  <div>
+                    <span>Dəyişiklik icazələri</span>
+                    <strong>{selectedRolePermissionSummary.write}</strong>
+                  </div>
+                </div>
+
+                <div className="permissions-toolbar">
+                  <input
+                    className="permissions-search"
+                    placeholder="Permission adı, açarı və ya qrup üzrə axtar..."
+                    value={searchPermission}
+                    onChange={(e) => setSearchPermission(e.target.value)}
+                  />
+
+                  <div className="permissions-counter-pill">
+                    <strong>{rolePermissionIds.length}</strong>
+                    <span>aktiv icazə</span>
+                  </div>
+                </div>
+
+                <PermissionSwitchList
+                  groups={permissionGroups}
+                  checkedIds={rolePermissionIds}
+                  disabled={!canEdit}
+                  onToggle={(permissionId) =>
+                    toggleArrayValue(setRolePermissionIds, permissionId)
+                  }
                 />
+              </>
+            ) : (
+              <>
+                <div className="permissions-card-head">
+                  <div>
+                    <span>{activeTabData.desc}</span>
+                    <h2>{selectedRole ? roleLabel(selectedRole) : "Rol"}</h2>
+                  </div>
 
-                <div className="permissions-list">
-                  {filteredUsers.map((user) => (
+                  {canEdit && (
                     <button
-                      key={user.id}
                       type="button"
-                      className={selectedUserId === user.id ? "active" : ""}
-                      onClick={() => setSelectedUserId(user.id)}
+                      className="primary"
+                      onClick={saveRoleCompanies}
+                      disabled={saving}
                     >
-                      <div>
-                        <strong>{userLabel(user)}</strong>
-                        <span>
-                          {(user.email || "-") +
-                            " · " +
-                            getUserRoleText(user) +
-                            " · " +
-                            getUserAccessScopeText(user) +
-                            " · " +
-                            getUserCompanyText(user)}
-                        </span>
-                      </div>
-
-                      <em>{selectedUserId === user.id ? "Aktiv" : "Seç"}</em>
+                      {saving ? "Saxlanılır..." : "Yadda saxla"}
                     </button>
-                  ))}
+                  )}
                 </div>
-              </aside>
 
-              <main className="permissions-main-card">
-                {activeTab === "USER_PERMISSIONS" ? (
-                  <>
-                    <div className="permissions-card-head">
-                      <div>
-                        <span>{activeTabData.desc}</span>                      
-                        
-                        
-                      </div>
+                <div className="permissions-toolbar">
+                  <input
+                    className="permissions-search"
+                    placeholder="Şirkət axtar..."
+                    value={searchCompany}
+                    onChange={(e) => setSearchCompany(e.target.value)}
+                  />
 
-                      <button
-                        type="button"
-                        className="primary"
-                        onClick={saveUserPermissions}
-                        disabled={saving}
-                      >
-                        {saving ? "Saxlanılır..." : "Yadda saxla"}
-                      </button>
-                    </div>
+                  <div className="permissions-counter-pill">
+                    <strong>{roleCompanyIds.length}</strong>
+                    <span>şirkət</span>
+                  </div>
+                </div>
 
-                    <div className="permissions-help">
-                      <div>
-                        <b>Default</b>
-                        <span>İstifadəçi rolundan gələn qaydaya tabe olur.</span>
-                      </div>
+                <CompanySwitchList
+                  companies={filteredCompanies}
+                  checkedIds={roleCompanyIds}
+                  disabled={!canEdit}
+                  onToggle={(companyId) =>
+                    toggleArrayValue(setRoleCompanyIds, companyId)
+                  }
+                />
+              </>
+            )}
+          </main>
+        </div>
+      )}
 
-                      <div>
-                        <b>Allow</b>
-                        <span>Rolda olmasa belə bu istifadəçiyə icazə verir.</span>
-                      </div>
+      {(activeTab === "USER_PERMISSIONS" ||
+        activeTab === "USER_COMPANIES") && (
+        <div className="permissions-layout">
+          <aside className="permissions-side-card">
+            <div className="permissions-side-head">
+              <div>
+                <h3>İstifadəçilər</h3>
+              </div>
 
-                      <div>
-                        <b>Deny</b>
-                        <span>Rolda olsa belə bu istifadəçidə bloklayır.</span>
-                      </div>
-                    </div>
-
-                    <div className="permissions-toolbar">
-                      <input
-                        className="permissions-search"
-                        placeholder="Permission axtar..."
-                        value={searchPermission}
-                        onChange={(e) => setSearchPermission(e.target.value)}
-                      />
-
-                      <div className="permissions-counter-pill">
-                        <strong>
-                          {userAllowPermissionIds.length +
-                            userDenyPermissionIds.length}
-                        </strong>
-                        <span>override</span>
-                      </div>
-                    </div>
-
-                    <UserPermissionOverrideList
-                      groups={permissionGroups}
-                      getStatus={getEffectivePermissionStatus}
-                      onSetEffect={setUserPermissionEffect}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <div className="permissions-card-head">
-                      <div>
-                        <span>{activeTabData.desc}</span>
-                        
-                      </div>
-
-                      <button
-                        type="button"
-                        className="primary"
-                        onClick={saveUserCompanies}
-                        disabled={saving}
-                      >
-                        {saving ? "Saxlanılır..." : "Yadda saxla"}
-                      </button>
-                    </div>
-
-                    <div className="permissions-help">
-                      <div>
-                        <b>Default</b>
-                        <span>
-                          Access scope Bütün şirkətlərdirsə hamısı, yoxdursa öz
-                          şirkəti və rol şirkətləri avtomatik aktiv görünür.
-                        </span>
-                      </div>
-
-                      <div>
-                        <b>Allow</b>
-                        <span>Bu şirkəti əlavə olaraq görə bilsin.</span>
-                      </div>
-
-                      <div>
-                        <b>Deny</b>
-                        <span>Default gəlsə belə bu şirkəti görməsin.</span>
-                      </div>
-                    </div>
-
-                    <div className="permissions-toolbar">
-                      <input
-                        className="permissions-search"
-                        placeholder="Şirkət axtar..."
-                        value={searchCompany}
-                        onChange={(e) => setSearchCompany(e.target.value)}
-                      />
-
-                      <div className="permissions-counter-pill">
-                        <strong>
-                          {userAllowCompanyIds.length +
-                            userDenyCompanyIds.length}
-                        </strong>
-                        <span>override</span>
-                      </div>
-                    </div>
-
-                    <UserCompanyOverrideList
-                      companies={filteredCompanies}
-                      getStatus={getEffectiveCompanyStatus}
-                      onSetEffect={setUserCompanyEffect}
-                      selectedUser={selectedUser}
-                    />
-                  </>
-                )}
-              </main>
+              <b>{users.length}</b>
             </div>
-          )}
-        </>
+
+            <input
+              className="permissions-search small"
+              placeholder="Ad, email, rol, access scope və ya şirkət üzrə axtar..."
+              value={searchUser}
+              onChange={(e) => setSearchUser(e.target.value)}
+            />
+
+            <div className="permissions-list">
+              {filteredUsers.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  className={selectedUserId === user.id ? "active" : ""}
+                  onClick={() => setSelectedUserId(user.id)}
+                >
+                  <div>
+                    <strong>{userLabel(user)}</strong>
+                    <span>
+                      {(user.email || "-") +
+                        " · " +
+                        getUserRoleText(user) +
+                        " · " +
+                        getUserAccessScopeText(user) +
+                        " · " +
+                        getUserCompanyText(user)}
+                    </span>
+                  </div>
+
+                  <em>{selectedUserId === user.id ? "Aktiv" : "Seç"}</em>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <main className="permissions-main-card">
+            {activeTab === "USER_PERMISSIONS" ? (
+              <>
+                <div className="permissions-card-head">
+                  <div>
+                    <span>{activeTabData.desc}</span>
+                    <h2>{selectedUser ? userLabel(selectedUser) : "User"}</h2>
+                  </div>
+
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={saveUserPermissions}
+                      disabled={saving}
+                    >
+                      {saving ? "Saxlanılır..." : "Yadda saxla"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="permissions-help">
+                  <div>
+                    <b>Default</b>
+                    <span>İstifadəçi rolundan gələn qaydaya tabe olur.</span>
+                  </div>
+
+                  <div>
+                    <b>Allow</b>
+                    <span>Rolda olmasa belə bu istifadəçiyə icazə verir.</span>
+                  </div>
+
+                  <div>
+                    <b>Deny</b>
+                    <span>Rolda olsa belə bu istifadəçidə bloklayır.</span>
+                  </div>
+                </div>
+
+                <div className="permissions-toolbar">
+                  <input
+                    className="permissions-search"
+                    placeholder="Permission axtar..."
+                    value={searchPermission}
+                    onChange={(e) => setSearchPermission(e.target.value)}
+                  />
+
+                  <div className="permissions-counter-pill">
+                    <strong>
+                      {userAllowPermissionIds.length +
+                        userDenyPermissionIds.length}
+                    </strong>
+                    <span>override</span>
+                  </div>
+                </div>
+
+                <UserPermissionOverrideList
+                  groups={permissionGroups}
+                  disabled={!canEdit}
+                  getStatus={getEffectivePermissionStatus}
+                  onSetEffect={setUserPermissionEffect}
+                />
+              </>
+            ) : (
+              <>
+                <div className="permissions-card-head">
+                  <div>
+                    <span>{activeTabData.desc}</span>
+                    <h2>{selectedUser ? userLabel(selectedUser) : "User"}</h2>
+                  </div>
+
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={saveUserCompanies}
+                      disabled={saving}
+                    >
+                      {saving ? "Saxlanılır..." : "Yadda saxla"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="permissions-help">
+                  <div>
+                    <b>Default</b>
+                    <span>
+                      Access scope Bütün şirkətlərdirsə hamısı, yoxdursa öz
+                      şirkəti və rol şirkətləri avtomatik aktiv görünür.
+                    </span>
+                  </div>
+
+                  <div>
+                    <b>Allow</b>
+                    <span>Bu şirkəti əlavə olaraq görə bilsin.</span>
+                  </div>
+
+                  <div>
+                    <b>Deny</b>
+                    <span>Default gəlsə belə bu şirkəti görməsin.</span>
+                  </div>
+                </div>
+
+                <div className="permissions-user-company-info">
+                  <div>
+                    <span>Access scope</span>
+                    <strong>
+                      {selectedUser
+                        ? getUserAccessScopeText(selectedUser)
+                        : "-"}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Default şirkət</span>
+                    <strong>
+                      {selectedUser ? getDefaultCompanyText(selectedUser) : "-"}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="permissions-toolbar">
+                  <input
+                    className="permissions-search"
+                    placeholder="Şirkət axtar..."
+                    value={searchCompany}
+                    onChange={(e) => setSearchCompany(e.target.value)}
+                  />
+
+                  <div className="permissions-counter-pill">
+                    <strong>
+                      {userAllowCompanyIds.length +
+                        userDenyCompanyIds.length}
+                    </strong>
+                    <span>override</span>
+                  </div>
+                </div>
+
+                <UserCompanyOverrideList
+                  companies={filteredCompanies}
+                  disabled={!canEdit}
+                  getStatus={getEffectiveCompanyStatus}
+                  onSetEffect={setUserCompanyEffect}
+                  selectedUser={selectedUser}
+                />
+              </>
+            )}
+          </main>
+        </div>
       )}
     </section>
   );
 }
 
-function PermissionSwitchList({ groups, checkedIds, onToggle }) {
+function PermissionSwitchList({ groups, checkedIds, onToggle, disabled }) {
   return (
     <div className="permissions-groups">
       {groups.map((group) => (
@@ -953,16 +1508,29 @@ function PermissionSwitchList({ groups, checkedIds, onToggle }) {
                 <button
                   key={permission.id}
                   type="button"
-                  className={`permission-switch-row ${checked ? "is-on" : ""}`}
+                  disabled={disabled}
+                  className={`permission-switch-row ${
+                    checked ? "is-on" : ""
+                  } ${permission.virtual ? "is-virtual" : ""} ${
+                    disabled ? "is-disabled" : ""
+                  }`}
                   onClick={() => onToggle(permission.id)}
                 >
                   <div className="permission-switch-info">
                     <strong>{permission.label}</strong>
-                    <small>{permission.key}</small>
+
+                    <small>
+                      {permission.key}
+                      {permission.virtual ? " · bazada yoxdur" : ""}
+                    </small>
+
                     {permission.description && <p>{permission.description}</p>}
                   </div>
 
-                  <IosSwitch checked={checked} />
+                  <div className="permission-switch-meta">
+                    <PermissionActionPill type={permission.action_type} />
+                    <IosSwitch checked={checked} />
+                  </div>
                 </button>
               );
             })}
@@ -973,7 +1541,7 @@ function PermissionSwitchList({ groups, checkedIds, onToggle }) {
   );
 }
 
-function CompanySwitchList({ companies, checkedIds, onToggle }) {
+function CompanySwitchList({ companies, checkedIds, onToggle, disabled }) {
   return (
     <div className="permissions-switch-list">
       {companies.map((company) => {
@@ -983,7 +1551,10 @@ function CompanySwitchList({ companies, checkedIds, onToggle }) {
           <button
             key={company.id}
             type="button"
-            className={`permission-switch-row ${checked ? "is-on" : ""}`}
+            disabled={disabled}
+            className={`permission-switch-row ${checked ? "is-on" : ""} ${
+              disabled ? "is-disabled" : ""
+            }`}
             onClick={() => onToggle(company.id)}
           >
             <div className="permission-switch-info">
@@ -1003,7 +1574,12 @@ function CompanySwitchList({ companies, checkedIds, onToggle }) {
   );
 }
 
-function UserPermissionOverrideList({ groups, getStatus, onSetEffect }) {
+function UserPermissionOverrideList({
+  groups,
+  getStatus,
+  onSetEffect,
+  disabled,
+}) {
   return (
     <div className="permissions-groups">
       {groups.map((group) => (
@@ -1019,19 +1595,31 @@ function UserPermissionOverrideList({ groups, getStatus, onSetEffect }) {
 
               return (
                 <div
-                  className={`permission-override-row status-${status.toLowerCase()}`}
+                  className={`permission-override-row status-${status.toLowerCase()} ${
+                    permission.virtual ? "is-virtual" : ""
+                  } ${disabled ? "is-disabled" : ""}`}
                   key={permission.id}
                 >
                   <div className="permission-switch-info">
                     <strong>{permission.label}</strong>
-                    <small>{permission.key}</small>
+
+                    <small>
+                      {permission.key}
+                      {permission.virtual ? " · bazada yoxdur" : ""}
+                    </small>
+
                     {permission.description && <p>{permission.description}</p>}
                   </div>
 
-                  <OverrideControl
-                    status={status}
-                    onChange={(effect) => onSetEffect(permission.id, effect)}
-                  />
+                  <div className="permission-override-actions">
+                    <PermissionActionPill type={permission.action_type} />
+
+                    <OverrideControl
+                      status={status}
+                      disabled={disabled}
+                      onChange={(effect) => onSetEffect(permission.id, effect)}
+                    />
+                  </div>
                 </div>
               );
             })}
@@ -1047,6 +1635,7 @@ function UserCompanyOverrideList({
   getStatus,
   onSetEffect,
   selectedUser,
+  disabled,
 }) {
   const accessScope = String(selectedUser?.access_scope || "OWN_COMPANY")
     .trim()
@@ -1061,7 +1650,9 @@ function UserCompanyOverrideList({
 
         return (
           <div
-            className={`permission-override-row status-${status.toLowerCase()}`}
+            className={`permission-override-row status-${status.toLowerCase()} ${
+              disabled ? "is-disabled" : ""
+            }`}
             key={company.id}
           >
             <div className="permission-switch-info">
@@ -1083,12 +1674,32 @@ function UserCompanyOverrideList({
 
             <OverrideControl
               status={status}
+              disabled={disabled}
               onChange={(effect) => onSetEffect(company.id, effect)}
             />
           </div>
         );
       })}
     </div>
+  );
+}
+
+function PermissionActionPill({ type }) {
+  const labels = {
+    view: "View",
+    export: "Export",
+    create: "Create",
+    edit: "Edit",
+    delete: "Delete",
+    transfer: "Transfer",
+    manage: "Manage",
+    other: "Other",
+  };
+
+  return (
+    <span className={`permission-action-pill action-${type || "other"}`}>
+      {labels[type] || "Other"}
+    </span>
   );
 }
 
@@ -1100,13 +1711,14 @@ function IosSwitch({ checked }) {
   );
 }
 
-function OverrideControl({ status, onChange }) {
+function OverrideControl({ status, onChange, disabled }) {
   const effective = status === "INHERITED" ? "DEFAULT" : status;
 
   return (
-    <div className="override-control">
+    <div className={`override-control ${disabled ? "is-disabled" : ""}`}>
       <button
         type="button"
+        disabled={disabled}
         className={effective === "DEFAULT" ? "active default" : ""}
         onClick={() => onChange("NONE")}
       >
@@ -1115,6 +1727,7 @@ function OverrideControl({ status, onChange }) {
 
       <button
         type="button"
+        disabled={disabled}
         className={effective === "ALLOW" ? "active allow" : ""}
         onClick={() => onChange("ALLOW")}
       >
@@ -1123,6 +1736,7 @@ function OverrideControl({ status, onChange }) {
 
       <button
         type="button"
+        disabled={disabled}
         className={effective === "DENY" ? "active deny" : ""}
         onClick={() => onChange("DENY")}
       >

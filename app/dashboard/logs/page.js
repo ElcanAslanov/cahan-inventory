@@ -811,12 +811,9 @@ export default function InventoryLogsPage() {
     <section className="logsPage">
       <div className="logsHero">
         <div>
-          <span className="logsEyebrow">Inventory movement history</span>
+          
           <h1>Loglar</h1>
-          <p>
-            İnventar yerdəyişmələrinin tam tarixçəsi: kimdən kimə keçdi, hansı
-            şirkət/departament dəyişdi və əməliyyatı kim etdi.
-          </p>
+         
         </div>
 
         <div className="logsHeroActions">
