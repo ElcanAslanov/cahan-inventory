@@ -97,10 +97,10 @@ function normalizeRole(role) {
 function resolveProfileRole(profile) {
   return normalizeRole(
     profile?.resolved_role ||
-      profile?.user_role ||
-      profile?.roles?.name ||
-      profile?.roles?.label ||
-      "USER"
+    profile?.user_role ||
+    profile?.roles?.name ||
+    profile?.roles?.label ||
+    "USER"
   );
 }
 
@@ -134,6 +134,10 @@ function canViewReports(role) {
     ROLE_NAMES.VIEWER,
     ROLE_NAMES.AUDIT,
   ].includes(normalizeRole(role));
+}
+
+function canImportInventory(role) {
+  return [ROLE_NAMES.ADMIN, ROLE_NAMES.REHBER].includes(normalizeRole(role));
 }
 
 function canManageQr(role) {
@@ -420,6 +424,207 @@ function sanitizeSheetName(value) {
     .slice(0, 31);
 }
 
+const INVENTORY_IMPORT_COLUMNS = [
+  { key: "inventory_code", label: "İnventar kodu" },
+  { key: "name", label: "İnventar adı" },
+  { key: "description", label: "Təsvir" },
+  { key: "brand", label: "Brend" },
+  { key: "model", label: "Model" },
+  { key: "serial_number", label: "Seriya nömrəsi" },
+  { key: "company_name", label: "Şirkət adı" },
+  { key: "department_name", label: "Departament adı" },
+  { key: "category_name", label: "Kateqoriya adı" },
+  { key: "responsible_full_name", label: "Məsul şəxsin ad soyadı" },
+  { key: "responsible_email", label: "Məsul şəxsin emaili" },
+  { key: "status", label: "Status" },
+  { key: "condition", label: "Vəziyyət" },
+  { key: "current_location", label: "Cari yerləşmə" },
+  { key: "purchase_date", label: "Alış tarixi" },
+  { key: "purchase_price", label: "Alış qiyməti" },
+  { key: "currency", label: "Valyuta" },
+  { key: "warranty_start_date", label: "Zəmanət başlanğıcı" },
+  { key: "warranty_end_date", label: "Zəmanət bitmə tarixi" },
+];
+
+const INVENTORY_IMPORT_TEMPLATE_HEADERS = INVENTORY_IMPORT_COLUMNS.map(
+  (column) => column.label
+);
+
+const INVENTORY_IMPORT_LABEL_TO_KEY = INVENTORY_IMPORT_COLUMNS.reduce(
+  (acc, column) => {
+    acc[column.label] = column.key;
+    acc[column.key] = column.key;
+    return acc;
+  },
+  {}
+);
+
+const INVENTORY_IMPORT_SAMPLE_ROWS = [
+  {
+    "İnventar kodu": "INV-0001",
+    "İnventar adı": "Lenovo ThinkPad E14",
+    Təsvir: "Ofis üçün laptop",
+    Brend: "Lenovo",
+    Model: "ThinkPad E14",
+    "Seriya nömrəsi": "SN123456",
+    "Şirkət adı": "Cahan Holding",
+    "Departament adı": "IT",
+    "Kateqoriya adı": "Laptop",
+    "Məsul şəxsin ad soyadı": "Vüqar Məmmədov",
+    "Məsul şəxsin emaili": "vuqar@gmail.com",
+    Status: "IN_STOCK",
+    Vəziyyət: "NEW",
+    "Cari yerləşmə": "Baş ofis",
+    "Alış tarixi": "2026-06-12",
+    "Alış qiyməti": 1200,
+    Valyuta: "AZN",
+    "Zəmanət başlanğıcı": "2026-06-12",
+    "Zəmanət bitmə tarixi": "2027-06-12",
+  },
+];
+
+function normalizeImportValue(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeImportLookup(value) {
+  return normalizeImportValue(value).toLowerCase();
+}
+
+function normalizeImportStatus(value) {
+  const raw = normalizeImportValue(value).toUpperCase();
+
+  const map = {
+    ANBARDA: "IN_STOCK",
+    STOCK: "IN_STOCK",
+    IN_STOCK: "IN_STOCK",
+    AVAILABLE: "IN_STOCK",
+
+    ASSIGNED: "ASSIGNED",
+    TEHKIM: "ASSIGNED",
+    "TƏHKIM": "ASSIGNED",
+    "TƏHKİM": "ASSIGNED",
+
+    REPAIR: "IN_REPAIR",
+    IN_REPAIR: "IN_REPAIR",
+    TEMIRDE: "IN_REPAIR",
+    "TƏMIRDƏ": "IN_REPAIR",
+    "TƏMİRDƏ": "IN_REPAIR",
+
+    LOST: "LOST",
+    ITIB: "LOST",
+    "İTİB": "LOST",
+
+    WRITTEN_OFF: "WRITTEN_OFF",
+    SILINIB: "WRITTEN_OFF",
+    "SİLİNİB": "WRITTEN_OFF",
+
+    DISPOSED: "DISPOSED",
+  };
+
+  return map[raw] || raw || "IN_STOCK";
+}
+
+function normalizeImportCondition(value) {
+  const raw = normalizeImportValue(value).toUpperCase();
+
+  const map = {
+    NEW: "NEW",
+    YENI: "NEW",
+    "YENİ": "NEW",
+
+    GOOD: "GOOD",
+    YAXSI: "GOOD",
+    "YAXŞI": "GOOD",
+
+    NORMAL: "NORMAL",
+
+    DAMAGED: "DAMAGED",
+    ZEDELENMIS: "DAMAGED",
+    "ZƏDƏLƏNMİŞ": "DAMAGED",
+
+    UNUSABLE: "UNUSABLE",
+    YARARSIZ: "UNUSABLE",
+  };
+
+  return map[raw] || raw || "GOOD";
+}
+
+function normalizeImportDate(value) {
+  if (!value) return "";
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const raw = normalizeImportValue(value);
+
+  if (!raw) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+
+  const dotMatch = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+
+  if (dotMatch) {
+    const day = dotMatch[1].padStart(2, "0");
+    const month = dotMatch[2].padStart(2, "0");
+    const year = dotMatch[3];
+
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsed = new Date(raw);
+
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return raw;
+}
+
+function downloadInventoryImportTemplate() {
+  const workbook = XLSX.utils.book_new();
+
+  const templateSheet = XLSX.utils.json_to_sheet(INVENTORY_IMPORT_SAMPLE_ROWS, {
+    header: INVENTORY_IMPORT_TEMPLATE_HEADERS,
+  });
+
+  templateSheet["!cols"] = INVENTORY_IMPORT_TEMPLATE_HEADERS.map((key) => ({
+    wch: Math.max(16, key.length + 4),
+  }));
+
+  XLSX.utils.book_append_sheet(workbook, templateSheet, "inventory_import");
+
+  const infoRows = [
+    ["Sahə", "Açıqlama"],
+    ["inventory_code", "Məcburi. Unikal inventar kodu. Məs: INV-0001"],
+    ["name", "Məcburi. İnventar adı."],
+    ["description", "İstəyə bağlı təsvir."],
+    ["brand", "İstəyə bağlı brand."],
+    ["model", "İstəyə bağlı model."],
+    ["serial_number", "İstəyə bağlı seriya nömrəsi."],
+    ["company_name", "Məcburi. Bazadakı şirkət adı ilə eyni olmalıdır."],
+    ["department_name", "İstəyə bağlı. Bazadakı departament adı ilə eyni olmalıdır."],
+    ["category_name", "Məcburi. Bazadakı kateqoriya adı ilə eyni olmalıdır."],
+    ["responsible_email", "İstəyə bağlı. Dolu olarsa status avtomatik ASSIGNED olacaq."],
+    ["status", "IN_STOCK, ASSIGNED, IN_REPAIR, LOST, WRITTEN_OFF, DISPOSED"],
+    ["condition", "NEW, GOOD, NORMAL, DAMAGED, UNUSABLE"],
+    ["current_location", "İstəyə bağlı cari yerləşmə."],
+    ["purchase_date", "YYYY-MM-DD formatında tarix."],
+    ["purchase_price", "Rəqəm."],
+    ["currency", "AZN, USD, EUR, TRY"],
+    ["warranty_start_date", "YYYY-MM-DD formatında tarix."],
+    ["warranty_end_date", "YYYY-MM-DD formatında tarix."],
+  ];
+
+  const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
+  infoSheet["!cols"] = [{ wch: 26 }, { wch: 82 }];
+
+  XLSX.utils.book_append_sheet(workbook, infoSheet, "Qaydalar");
+
+  XLSX.writeFile(workbook, "inventory-import-template.xlsx");
+}
+
 function getImageCount(item) {
   return Array.isArray(item?.images) ? item.images.length : 0;
 }
@@ -437,7 +642,7 @@ function makeInventoryReportRows(list) {
     Departament: item.department?.name || "-",
     Kateqoriya: item.category?.name || "-",
     "Məsul şəxs": item.responsible?.full_name || "-",
-    "Məsul şəxsin emaili": item.responsible?.email || "-",
+    "Məsul şəxsin emaili": item.responsible?.email || item.responsible_external_email || "-",
     Status: getStatusLabel(item.status),
     Vəziyyət: getConditionLabel(item.condition),
     "Health status": getHealthLabel(item.computed_health_status),
@@ -461,6 +666,12 @@ function makeInventorySummaryRows(summary, sortedItems) {
     Ad: status.label,
     Say: sortedItems.filter((item) => item.status === status.value).length,
   }));
+
+
+
+
+
+
 
   const healthCounts = HEALTH_OPTIONS.map((health) => ({
     Bölmə: "Health",
@@ -722,6 +933,7 @@ function buildInventoryPrintHtml({
             font-size: 12px;
             font-weight: 700;
           }
+           
           @media print {
             body {
               padding: 0;
@@ -787,10 +999,9 @@ function buildInventoryPrintHtml({
                 </tr>
               </thead>
               <tbody>
-                ${
-                  companyRows ||
-                  `<tr><td colspan="5">Şirkət analizi üçün məlumat yoxdur.</td></tr>`
-                }
+                ${companyRows ||
+    `<tr><td colspan="5">Şirkət analizi üçün məlumat yoxdur.</td></tr>`
+    }
               </tbody>
             </table>
           </section>
@@ -811,10 +1022,9 @@ function buildInventoryPrintHtml({
                 </tr>
               </thead>
               <tbody>
-                ${
-                  tableRows ||
-                  `<tr><td colspan="9">Hesabat üçün inventar yoxdur.</td></tr>`
-                }
+                ${tableRows ||
+    `<tr><td colspan="9">Hesabat üçün inventar yoxdur.</td></tr>`
+    }
               </tbody>
             </table>
           </section>
@@ -856,6 +1066,8 @@ export default function InventoryPageClient() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createVisible, setCreateVisible] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importVisible, setImportVisible] = useState(false);
   const [viewItem, setViewItem] = useState(null);
   const [viewVisible, setViewVisible] = useState(false);
   const [editItem, setEditItem] = useState(null);
@@ -876,13 +1088,14 @@ export default function InventoryPageClient() {
   const [optionProfiles, setOptionProfiles] = useState([]);
 
   const currentRole = resolveProfileRole(me);
-const currentCompanyId = me?.company_id || me?.companies?.id || "";
+  const currentCompanyId = me?.company_id || me?.companies?.id || "";
 
   const allowViewInventory = canViewInventory(currentRole);
   const allowCreateInventory = canCreateInventory(currentRole);
   const allowEditInventory = canEditInventory(currentRole);
   const allowDeleteInventory = canDeleteInventory(currentRole);
   const allowReports = canViewReports(currentRole);
+  const allowImportInventory = canImportInventory(currentRole);
   const allowQr = canManageQr(currentRole);
 
   useEffect(() => {
@@ -912,6 +1125,16 @@ const currentCompanyId = me?.company_id || me?.companies?.id || "";
 
     return () => window.clearTimeout(timer);
   }, [createOpen]);
+
+  useEffect(() => {
+    if (!importOpen) return;
+
+    const timer = window.setTimeout(() => {
+      setImportVisible(true);
+    }, 20);
+
+    return () => window.clearTimeout(timer);
+  }, [importOpen]);
 
   useEffect(() => {
     if (!viewItem) return;
@@ -975,9 +1198,9 @@ const currentCompanyId = me?.company_id || me?.companies?.id || "";
     }
 
     const { data: profile, error: profileError } = await supabase
-  .from("profiles")
-  .select(
-    `
+      .from("profiles")
+      .select(
+        `
     id,
     full_name,
     email,
@@ -996,7 +1219,7 @@ const currentCompanyId = me?.company_id || me?.companies?.id || "";
       name
     )
   `
-  )
+      )
       .eq("id", user.id)
       .maybeSingle();
 
@@ -1005,46 +1228,46 @@ const currentCompanyId = me?.company_id || me?.companies?.id || "";
     }
 
     if (!profile) {
-  setMe(null);
-  return null;
-}
+      setMe(null);
+      return null;
+    }
 
-let finalProfile = { ...profile };
-let resolvedRole = resolveProfileRole(finalProfile);
+    let finalProfile = { ...profile };
+    let resolvedRole = resolveProfileRole(finalProfile);
 
-if (finalProfile.user_role && !finalProfile.roles) {
-  const { data: roleRow, error: roleError } = await supabase
-    .from("roles")
-    .select("id,name,label")
-    .eq("name", normalizeRole(finalProfile.user_role))
-    .maybeSingle();
+    if (finalProfile.user_role && !finalProfile.roles) {
+      const { data: roleRow, error: roleError } = await supabase
+        .from("roles")
+        .select("id,name,label")
+        .eq("name", normalizeRole(finalProfile.user_role))
+        .maybeSingle();
 
-  if (!roleError && roleRow) {
+      if (!roleError && roleRow) {
+        finalProfile = {
+          ...finalProfile,
+          role_id: roleRow.id,
+          roles: roleRow,
+        };
+
+        resolvedRole = normalizeRole(roleRow.name);
+      } else if (roleError) {
+        console.warn("INVENTORY ROLE READ WARNING:", {
+          message: roleError.message,
+          details: roleError.details,
+          hint: roleError.hint,
+          code: roleError.code,
+        });
+      }
+    }
+
     finalProfile = {
       ...finalProfile,
-      role_id: roleRow.id,
-      roles: roleRow,
+      resolved_role: resolvedRole,
+      resolved_role_label: finalProfile?.roles?.label || resolvedRole,
     };
 
-    resolvedRole = normalizeRole(roleRow.name);
-  } else if (roleError) {
-    console.warn("INVENTORY ROLE READ WARNING:", {
-      message: roleError.message,
-      details: roleError.details,
-      hint: roleError.hint,
-      code: roleError.code,
-    });
-  }
-}
-
-finalProfile = {
-  ...finalProfile,
-  resolved_role: resolvedRole,
-  resolved_role_label: finalProfile?.roles?.label || resolvedRole,
-};
-
-setMe(finalProfile);
-return finalProfile;
+    setMe(finalProfile);
+    return finalProfile;
   }
 
   async function loadItems(profileArg = me) {
@@ -1064,6 +1287,8 @@ return finalProfile;
         inventory_code,
         name,
         description,
+        responsible_external_name,
+        responsible_external_email,
         serial_number,
         model,
         brand,
@@ -1552,6 +1777,28 @@ return finalProfile;
     }, 220);
   }
 
+  function openImportModal() {
+    if (!allowImportInventory) {
+      alert("Import üçün icazəniz yoxdur.");
+      return;
+    }
+
+    setImportOpen(true);
+  }
+
+  function closeImportModal() {
+    setImportVisible(false);
+
+    window.setTimeout(() => {
+      setImportOpen(false);
+    }, 220);
+  }
+
+  async function handleImportDone() {
+    await loadItems(me);
+    closeImportModal();
+  }
+
   function openViewModal(item) {
     setViewItem(item);
   }
@@ -1704,6 +1951,8 @@ return finalProfile;
         inventory_code,
         name,
         description,
+        responsible_external_name,
+        responsible_external_email,
         serial_number,
         model,
         brand,
@@ -1791,8 +2040,7 @@ return finalProfile;
 
     if (createdFrom || createdTo) {
       parts.push(
-        `Tarix: ${formatInputDate(createdFrom) || "..."} - ${
-          formatInputDate(createdTo) || "..."
+        `Tarix: ${formatInputDate(createdFrom) || "..."} - ${formatInputDate(createdTo) || "..."
         }`
       );
     }
@@ -1929,6 +2177,28 @@ return finalProfile;
                 disabled={loading || sortedItems.length === 0}
               >
                 Print report
+              </button>
+            </>
+          )}
+
+          {allowImportInventory && (
+            <>
+              <button
+                type="button"
+                className="inventory-report-btn template"
+                onClick={downloadInventoryImportTemplate}
+                disabled={loading}
+              >
+                Şablon yüklə
+              </button>
+
+              <button
+                type="button"
+                className="inventory-report-btn import"
+                onClick={openImportModal}
+                disabled={loading}
+              >
+                Import
               </button>
             </>
           )}
@@ -2082,9 +2352,8 @@ return finalProfile;
                           <button
                             key={item.id}
                             type="button"
-                            className={`inventory-compact-chip ${
-                              selected ? "active" : ""
-                            }`}
+                            className={`inventory-compact-chip ${selected ? "active" : ""
+                              }`}
                             onClick={() =>
                               toggleMultiValue(setSelectedCompanies, id)
                             }
@@ -2119,9 +2388,8 @@ return finalProfile;
                           <button
                             key={item.id}
                             type="button"
-                            className={`inventory-compact-chip ${
-                              selected ? "active" : ""
-                            }`}
+                            className={`inventory-compact-chip ${selected ? "active" : ""
+                              }`}
                             onClick={() =>
                               toggleMultiValue(setSelectedCategories, id)
                             }
@@ -2138,9 +2406,8 @@ return finalProfile;
                   title="Yaradılma tarixi"
                   subtitle={
                     createdFrom || createdTo
-                      ? `${formatInputDate(createdFrom) || "..."} - ${
-                          formatInputDate(createdTo) || "..."
-                        }`
+                      ? `${formatInputDate(createdFrom) || "..."} - ${formatInputDate(createdTo) || "..."
+                      }`
                       : "Tarix seçilməyib"
                   }
                   wide
@@ -2267,9 +2534,8 @@ return finalProfile;
                   <button
                     key={company.id}
                     type="button"
-                    className={`inventory-company-bar-btn ${
-                      active ? "active" : ""
-                    }`}
+                    className={`inventory-company-bar-btn ${active ? "active" : ""
+                      }`}
                     onClick={() => setExpandedCompanyId(company.id)}
                   >
                     <div className="inventory-company-bar-top">
@@ -2472,7 +2738,7 @@ return finalProfile;
                       <td>{item.company?.name || "-"}</td>
                       <td>{item.department?.name || "-"}</td>
                       <td>{item.category?.name || "-"}</td>
-                      <td>{item.responsible?.full_name || "-"}</td>
+                      <td>{item.responsible?.full_name || item.responsible_external_name || "-"}</td>
 
                       <td>
                         <InventoryStatusPill status={item.status} />
@@ -2501,9 +2767,8 @@ return finalProfile;
                       <td>
                         <button
                           type="button"
-                          className={`inventory-qr-btn ${
-                            item.qr_token ? "ready" : ""
-                          }`}
+                          className={`inventory-qr-btn ${item.qr_token ? "ready" : ""
+                            }`}
                           onClick={() => handleQrClick(item)}
                           disabled={
                             qrGeneratingId === item.id ||
@@ -2576,7 +2841,7 @@ return finalProfile;
 
                     <div>
                       <span>Məsul şəxs</span>
-                      <strong>{item.responsible?.full_name || "-"}</strong>
+                      <strong>{item.responsible?.full_name || item.responsible_external_name || "-"}</strong>
                     </div>
 
                     <div>
@@ -2611,9 +2876,8 @@ return finalProfile;
 
                     <button
                       type="button"
-                      className={`inventory-qr-btn ${
-                        item.qr_token ? "ready" : ""
-                      }`}
+                      className={`inventory-qr-btn ${item.qr_token ? "ready" : ""
+                        }`}
                       onClick={() => handleQrClick(item)}
                       disabled={
                         qrGeneratingId === item.id ||
@@ -2687,6 +2951,22 @@ return finalProfile;
         />
       </SmoothModalShell>
 
+      <SmoothModalShell mounted={mounted} open={importOpen} visible={importVisible}>
+        <InventoryImportModal
+          open={importOpen}
+          visible={importVisible}
+          companies={optionCompanies}
+          departments={optionDepartments}
+          categories={optionCategories}
+          profiles={optionProfiles}
+          role={currentRole}
+          currentCompanyId={currentCompanyId}
+          canImport={allowImportInventory}
+          onClose={closeImportModal}
+          onImported={handleImportDone}
+        />
+      </SmoothModalShell>
+
       <InventoryViewModal
         mounted={mounted}
         visible={viewVisible}
@@ -2733,6 +3013,255 @@ return finalProfile;
       />
 
       <style jsx global>{`
+
+       .inventory-report-btn.template {
+  background: #f8fafc;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+}
+
+.inventory-report-btn.import {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.inventory-import-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.inventory-import-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(10px);
+}
+
+.inventory-import-modal {
+  position: relative;
+  width: min(1100px, 100%);
+  max-height: min(92vh, 900px);
+  overflow: hidden;
+  border-radius: 28px;
+  background: #ffffff;
+  box-shadow: 0 30px 90px rgba(15, 23, 42, 0.24);
+  display: flex;
+  flex-direction: column;
+}
+
+.inventory-import-head {
+  padding: 22px 24px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.inventory-import-head span {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.inventory-import-head h2 {
+  margin: 5px 0 6px;
+  color: #0f172a;
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+
+.inventory-import-head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.inventory-import-head > button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 14px;
+  background: #f1f5f9;
+  color: #0f172a;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.inventory-import-body {
+  padding: 18px 24px;
+  overflow: auto;
+}
+
+.inventory-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.inventory-import-actions > strong {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.inventory-import-file-btn {
+  min-height: 42px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.inventory-import-file-btn input {
+  display: none;
+}
+
+.inventory-import-info {
+  margin-top: 14px;
+  padding: 13px 14px;
+  border-radius: 16px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
+.inventory-import-errors {
+  margin-top: 14px;
+  padding: 13px 14px;
+  border-radius: 16px;
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.inventory-import-errors strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.inventory-import-errors p {
+  margin: 5px 0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-import-preview {
+  margin-top: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.inventory-import-preview-head {
+  padding: 13px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inventory-import-preview-head strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.inventory-import-preview-head span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.inventory-import-table-wrap {
+  overflow: auto;
+  max-height: 360px;
+}
+
+.inventory-import-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.inventory-import-preview th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 11px 12px;
+  background: #0f172a;
+  color: #ffffff;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.inventory-import-preview td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.inventory-import-more {
+  margin: 0;
+  padding: 11px 14px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  background: #f8fafc;
+}
+
+.inventory-import-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.inventory-import-footer button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 14px;
+  padding: 0 16px;
+  background: #f1f5f9;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.inventory-import-footer button.primary {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.inventory-import-footer button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
         .inventory-image-count {
           min-width: 34px;
           height: 30px;
@@ -3231,9 +3760,8 @@ function InventoryViewModal({
 
   return createPortal(
     <div
-      className={`inventory-view-root inventory-smooth-root ${
-        visible ? "show" : ""
-      }`}
+      className={`inventory-view-root inventory-smooth-root ${visible ? "show" : ""
+        }`}
       role="dialog"
       aria-modal="true"
     >
@@ -3273,8 +3801,15 @@ function InventoryViewModal({
               <DetailRow label="Şirkət" value={item.company?.name} />
               <DetailRow label="Departament" value={item.department?.name} />
               <DetailRow label="Kateqoriya" value={item.category?.name} />
-              <DetailRow label="Məsul şəxs" value={item.responsible?.full_name} />
-              <DetailRow label="Email" value={item.responsible?.email} />
+              <DetailRow
+                label="Məsul şəxs"
+                value={item.responsible?.full_name || item.responsible_external_name}
+              />
+
+              <DetailRow
+                label="Email"
+                value={item.responsible?.email || item.responsible_external_email}
+              />
             </DetailCard>
 
             <DetailCard title="Maliyyə və zəmanət">
@@ -3565,9 +4100,8 @@ function InventoryEditModal({
 
   return createPortal(
     <div
-      className={`inventory-edit-root inventory-smooth-root ${
-        visible ? "show" : ""
-      }`}
+      className={`inventory-edit-root inventory-smooth-root ${visible ? "show" : ""
+        }`}
       role="dialog"
       aria-modal="true"
     >
@@ -3923,9 +4457,8 @@ function InventoryQrModal({ mounted, visible, item, onClose }) {
 
   return createPortal(
     <div
-      className={`inventory-qr-root inventory-smooth-root ${
-        visible ? "show" : ""
-      }`}
+      className={`inventory-qr-root inventory-smooth-root ${visible ? "show" : ""
+        }`}
       role="dialog"
       aria-modal="true"
     >
@@ -4005,9 +4538,8 @@ function InventoryDeleteConfirmModal({
 
   return createPortal(
     <div
-      className={`inventory-delete-root inventory-smooth-root ${
-        visible ? "show" : ""
-      }`}
+      className={`inventory-delete-root inventory-smooth-root ${visible ? "show" : ""
+        }`}
       role="dialog"
       aria-modal="true"
     >
@@ -4088,9 +4620,8 @@ function EditSection({ title, children }) {
 function EditField({ label, children, wide, full }) {
   return (
     <label
-      className={`inventory-edit-field ${wide ? "wide" : ""} ${
-        full ? "full" : ""
-      }`}
+      className={`inventory-edit-field ${wide ? "wide" : ""} ${full ? "full" : ""
+        }`}
     >
       <span>{label}</span>
       {children}
@@ -4109,6 +4640,600 @@ function MinimalFilterBlock({ title, subtitle, children, wide }) {
       </div>
 
       {children}
+    </div>
+  );
+}
+
+function InventoryImportModal({
+  open,
+  companies,
+  departments,
+  categories,
+  profiles,
+  role,
+  currentCompanyId,
+  canImport,
+  onClose,
+  onImported,
+}) {
+  const [fileName, setFileName] = useState("");
+  const [rawRows, setRawRows] = useState([]);
+  const [previewRows, setPreviewRows] = useState([]);
+  const [errors, setErrors] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  const companyMap = useMemo(() => {
+    const map = new Map();
+
+    companies.forEach((company) => {
+      map.set(normalizeImportLookup(company.name), company);
+    });
+
+    return map;
+  }, [companies]);
+
+  const departmentMap = useMemo(() => {
+    const map = new Map();
+
+    departments.forEach((department) => {
+      const key = `${normalizeImportLookup(department.name)}::${department.company_id || ""}`;
+      map.set(key, department);
+    });
+
+    return map;
+  }, [departments]);
+
+  const categoryMap = useMemo(() => {
+    const map = new Map();
+
+    categories.forEach((category) => {
+      map.set(normalizeImportLookup(category.name), category);
+    });
+
+    return map;
+  }, [categories]);
+
+  const profileMap = useMemo(() => {
+    const map = new Map();
+
+    profiles.forEach((profile) => {
+      if (profile.email) {
+        map.set(normalizeImportLookup(profile.email), profile);
+      }
+    });
+
+    return map;
+  }, [profiles]);
+
+  if (!open) return null;
+
+  function resetImport() {
+    setFileName("");
+    setRawRows([]);
+    setPreviewRows([]);
+    setErrors([]);
+  }
+
+ function parseRows(rows) {
+  const nextErrors = [];
+  const parsed = [];
+
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2;
+
+    const inventoryCode = normalizeImportValue(row.inventory_code);
+    const name = normalizeImportValue(row.name);
+    const companyName = normalizeImportValue(row.company_name);
+    const departmentName = normalizeImportValue(row.department_name);
+    const categoryName = normalizeImportValue(row.category_name);
+    const responsibleEmail = normalizeImportValue(row.responsible_email);
+    const responsibleFullName = normalizeImportValue(row.responsible_full_name);
+
+    if (!inventoryCode) {
+      nextErrors.push(`Sətir ${rowNumber}: İnventar kodu məcburidir.`);
+    }
+
+    if (!name) {
+      nextErrors.push(`Sətir ${rowNumber}: İnventar adı məcburidir.`);
+    }
+
+    if (!companyName) {
+      nextErrors.push(`Sətir ${rowNumber}: Şirkət adı məcburidir.`);
+    }
+
+    if (!categoryName) {
+      nextErrors.push(`Sətir ${rowNumber}: Kateqoriya adı məcburidir.`);
+    }
+
+    let responsible = null;
+
+    if (responsibleEmail) {
+      responsible = profileMap.get(normalizeImportLookup(responsibleEmail));
+    }
+
+    const status =
+      responsible || responsibleFullName || responsibleEmail
+        ? "ASSIGNED"
+        : normalizeImportStatus(row.status || "IN_STOCK");
+
+    const condition = normalizeImportCondition(row.condition || "GOOD");
+
+    if (!ITEM_STATUS_OPTIONS.some((item) => item.value === status)) {
+      nextErrors.push(
+        `Sətir ${rowNumber}: status düzgün deyil. Düzgün dəyərlər: ${ITEM_STATUS_OPTIONS.map(
+          (x) => x.value
+        ).join(", ")}`
+      );
+    }
+
+    if (!CONDITION_OPTIONS.some((item) => item.value === condition)) {
+      nextErrors.push(
+        `Sətir ${rowNumber}: condition düzgün deyil. Düzgün dəyərlər: ${CONDITION_OPTIONS.map(
+          (x) => x.value
+        ).join(", ")}`
+      );
+    }
+
+    parsed.push({
+      rowNumber,
+      inventory_code: inventoryCode,
+      name,
+      description: normalizeImportValue(row.description),
+      brand: normalizeImportValue(row.brand),
+      model: normalizeImportValue(row.model),
+      serial_number: normalizeImportValue(row.serial_number),
+
+      company_name: companyName,
+      department_name: departmentName,
+      category_name: categoryName,
+
+      responsible_user_id: responsible?.id || null,
+      responsible_full_name: responsible?.full_name || responsibleFullName,
+      responsible_email: responsibleEmail,
+      responsible_external_name: responsible ? "" : responsibleFullName,
+      responsible_external_email: responsible ? "" : responsibleEmail,
+
+      status,
+      condition,
+      current_location: normalizeImportValue(row.current_location),
+      purchase_date: normalizeImportDate(row.purchase_date),
+      purchase_price: toNumberOrNull(row.purchase_price),
+      currency: normalizeImportValue(row.currency || "AZN").toUpperCase(),
+      warranty_start_date: normalizeImportDate(row.warranty_start_date),
+      warranty_end_date: normalizeImportDate(row.warranty_end_date),
+    });
+  });
+
+  setPreviewRows(parsed);
+  setErrors(nextErrors);
+}
+
+  async function handleFileChange(e) {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    setFileName(file.name);
+    setErrors([]);
+    setPreviewRows([]);
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, {
+        type: "array",
+        cellDates: true,
+      });
+
+      const firstSheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[firstSheetName];
+
+      const importedRows = XLSX.utils.sheet_to_json(sheet, {
+        defval: "",
+      });
+
+      const rows = importedRows.map((row) => {
+        const normalized = {};
+
+        Object.entries(row).forEach(([label, value]) => {
+          const key = INVENTORY_IMPORT_LABEL_TO_KEY[label] || label;
+          normalized[key] = value;
+        });
+
+        return normalized;
+      });
+
+      setRawRows(rows);
+      parseRows(rows);
+    } catch (err) {
+      console.error("INVENTORY_IMPORT_PARSE_ERROR:", err);
+      setErrors([err?.message || "Fayl oxunarkən xəta baş verdi."]);
+      setRawRows([]);
+      setPreviewRows([]);
+    }
+  }
+
+  async function handleImportSubmit() {
+    if (!canImport) {
+      alert("Import üçün icazəniz yoxdur.");
+      return;
+    }
+
+    if (errors.length > 0) {
+      alert("Əvvəlcə import xətalarını düzəlt.");
+      return;
+    }
+
+    if (previewRows.length === 0) {
+      alert("Import üçün sətir yoxdur.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const codes = previewRows.map((row) => row.inventory_code).filter(Boolean);
+
+      const { data: existingRows, error: existingError } = await supabase
+        .from("inventory_items")
+        .select("inventory_code")
+        .in("inventory_code", codes);
+
+      if (existingError) throw existingError;
+
+      const existingCodeSet = new Set(
+        (existingRows || []).map((row) => row.inventory_code)
+      );
+
+      const duplicateCodes = codes.filter((code) => existingCodeSet.has(code));
+
+      if (duplicateCodes.length > 0) {
+        setErrors([
+          `Bu inventar kodları artıq bazada var: ${Array.from(
+            new Set(duplicateCodes)
+          ).join(", ")}`,
+        ]);
+        setSaving(false);
+        return;
+      }
+
+      const uniqueCompanyNames = Array.from(
+        new Set(previewRows.map((row) => row.company_name).filter(Boolean))
+      );
+
+      const companyNameToId = new Map(
+        companies.map((company) => [
+          normalizeImportLookup(company.name),
+          company.id,
+        ])
+      );
+
+      for (const companyName of uniqueCompanyNames) {
+        const key = normalizeImportLookup(companyName);
+
+        if (companyNameToId.has(key)) continue;
+
+        const { data: createdCompany, error: companyCreateError } = await supabase
+          .from("companies")
+          .insert({
+            name: companyName,
+            status: "ACTIVE",
+          })
+          .select("id,name")
+          .single();
+
+        if (companyCreateError) throw companyCreateError;
+
+        companyNameToId.set(key, createdCompany.id);
+      }
+
+      const categoryNameToId = new Map(
+        categories.map((category) => [
+          normalizeImportLookup(category.name),
+          category.id,
+        ])
+      );
+
+      const uniqueCategoryNames = Array.from(
+        new Set(previewRows.map((row) => row.category_name).filter(Boolean))
+      );
+
+      for (const categoryName of uniqueCategoryNames) {
+        const key = normalizeImportLookup(categoryName);
+
+        if (categoryNameToId.has(key)) continue;
+
+        const { data: createdCategory, error: categoryCreateError } = await supabase
+          .from("inventory_categories")
+          .insert({
+            name: categoryName,
+            status: "ACTIVE",
+          })
+          .select("id,name")
+          .single();
+
+        if (categoryCreateError) throw categoryCreateError;
+
+        categoryNameToId.set(key, createdCategory.id);
+      }
+
+      const departmentKeyToId = new Map(
+        departments.map((department) => [
+          `${normalizeImportLookup(department.name)}::${department.company_id || ""}`,
+          department.id,
+        ])
+      );
+
+      const uniqueDepartments = [];
+
+      previewRows.forEach((row) => {
+        if (!row.department_name || !row.company_name) return;
+
+        const companyId = companyNameToId.get(normalizeImportLookup(row.company_name));
+
+        if (!companyId) return;
+
+        const key = `${normalizeImportLookup(row.department_name)}::${companyId}`;
+
+        if (!uniqueDepartments.some((item) => item.key === key)) {
+          uniqueDepartments.push({
+            key,
+            name: row.department_name,
+            company_id: companyId,
+          });
+        }
+      });
+
+      for (const department of uniqueDepartments) {
+        if (departmentKeyToId.has(department.key)) continue;
+
+        const { data: createdDepartment, error: departmentCreateError } =
+          await supabase
+            .from("departments")
+            .insert({
+              name: department.name,
+              company_id: department.company_id,
+              status: "ACTIVE",
+            })
+            .select("id,name,company_id")
+            .single();
+
+        if (departmentCreateError) throw departmentCreateError;
+
+        departmentKeyToId.set(department.key, createdDepartment.id);
+      }
+
+      const rowsToInsert = previewRows.map((row) => {
+        const companyId = companyNameToId.get(
+          normalizeImportLookup(row.company_name)
+        );
+
+        const departmentId = row.department_name
+          ? departmentKeyToId.get(
+            `${normalizeImportLookup(row.department_name)}::${companyId}`
+          )
+          : null;
+
+        const categoryId = categoryNameToId.get(
+          normalizeImportLookup(row.category_name)
+        );
+
+        return {
+          inventory_code: row.inventory_code,
+          name: row.name,
+          description: row.description || null,
+          brand: row.brand || null,
+          model: row.model || null,
+          serial_number: row.serial_number || null,
+
+          company_id: companyId,
+          department_id: departmentId || null,
+          category_id: categoryId,
+
+          responsible_user_id: row.responsible_user_id,
+          responsible_external_name: row.responsible_user_id
+            ? null
+            : row.responsible_external_name || null,
+
+          responsible_external_email: row.responsible_user_id
+            ? null
+            : row.responsible_external_email || null,
+          status: row.status,
+          condition: row.condition,
+          current_location: row.current_location || null,
+
+          purchase_date: row.purchase_date || null,
+          purchase_price: row.purchase_price,
+          currency: row.currency || "AZN",
+          warranty_start_date: row.warranty_start_date || null,
+          warranty_end_date: row.warranty_end_date || null,
+          images: [],
+        };
+      });
+
+      const invalidRows = rowsToInsert
+        .map((row, index) => ({ row, rowNumber: previewRows[index].rowNumber }))
+        .filter((item) => !item.row.company_id || !item.row.category_id);
+
+      if (invalidRows.length > 0) {
+        setErrors(
+          invalidRows.map(
+            (item) =>
+              `Sətir ${item.rowNumber}: Şirkət və ya kateqoriya yaradıla bilmədi.`
+          )
+        );
+        setSaving(false);
+        return;
+      }
+
+      const { data: insertedItems, error: insertError } = await supabase
+        .from("inventory_items")
+        .insert(rowsToInsert)
+        .select("id, responsible_user_id");
+
+      if (insertError) throw insertError;
+
+      const assignmentRows = (insertedItems || [])
+        .filter((item) => item.responsible_user_id)
+        .map((item) => ({
+          inventory_id: item.id,
+          assigned_to: item.responsible_user_id,
+          status: "ACTIVE",
+          note: "Excel/CSV import zamanı avtomatik təhkim edildi.",
+        }));
+
+      if (assignmentRows.length > 0) {
+        const { error: assignmentError } = await supabase
+          .from("inventory_assignments")
+          .insert(assignmentRows);
+
+        if (assignmentError) throw assignmentError;
+      }
+
+      alert(`${rowsToInsert.length} inventar uğurla import edildi.`);
+      resetImport();
+      onImported?.();
+    } catch (err) {
+      console.error("INVENTORY_IMPORT_SAVE_ERROR:", err);
+      setErrors([err?.message || "Import zamanı xəta baş verdi."]);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="inventory-import-root inventory-smooth-root show">
+      <button
+        type="button"
+        className="inventory-import-backdrop inventory-smooth-backdrop"
+        onClick={onClose}
+        aria-label="Bağla"
+        disabled={saving}
+      />
+
+      <section className="inventory-import-modal inventory-smooth-card">
+        <header className="inventory-import-head">
+          <div>
+            <span>Inventory import</span>
+            <h2>Excel / CSV import</h2>
+            <p>
+              Şablonu yüklə, məlumatları doldur və faylı seçərək inventarları
+              toplu şəkildə əlavə et.
+            </p>
+          </div>
+
+          <button type="button" onClick={onClose} disabled={saving}>
+            ×
+          </button>
+        </header>
+
+        <div className="inventory-import-body">
+          <div className="inventory-import-actions">
+            <button
+              type="button"
+              className="inventory-report-btn template"
+              onClick={downloadInventoryImportTemplate}
+              disabled={saving}
+            >
+              Şablon yüklə
+            </button>
+
+            <label className="inventory-import-file-btn">
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFileChange}
+                disabled={saving}
+              />
+              Fayl seç
+            </label>
+
+            {fileName && <strong>{fileName}</strong>}
+          </div>
+
+          <div className="inventory-import-info">
+            <strong>Vacib:</strong> `company_name` və `category_name` bazada
+            mövcud olan adlarla eyni olmalıdır. `responsible_email` doludursa
+            inventar avtomatik həmin şəxsə təhkim ediləcək.
+          </div>
+
+          {errors.length > 0 && (
+            <div className="inventory-import-errors">
+              <strong>Xətalar</strong>
+              {errors.slice(0, 20).map((error, index) => (
+                <p key={`${error}-${index}`}>{error}</p>
+              ))}
+
+              {errors.length > 20 && (
+                <p>... və daha {errors.length - 20} xəta</p>
+              )}
+            </div>
+          )}
+
+          {previewRows.length > 0 && (
+            <div className="inventory-import-preview">
+              <div className="inventory-import-preview-head">
+                <strong>Preview</strong>
+                <span>{previewRows.length} sətir</span>
+              </div>
+
+              <div className="inventory-import-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Sətir</th>
+                      <th>Kod</th>
+                      <th>Ad</th>
+                      <th>Şirkət</th>
+                      <th>Departament</th>
+                      <th>Kateqoriya</th>
+                      <th>Məsul email</th>
+                      <th>Status</th>
+                      <th>Vəziyyət</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {previewRows.slice(0, 50).map((row) => (
+                      <tr key={`${row.rowNumber}-${row.inventory_code}`}>
+                        <td>{row.rowNumber}</td>
+                        <td>{row.inventory_code}</td>
+                        <td>{row.name}</td>
+                        <td>{row.company_name}</td>
+                        <td>{row.department_name || "-"}</td>
+                        <td>{row.category_name}</td>
+                        <td>{row.responsible_email || "-"}</td>
+                        <td>{row.status}</td>
+                        <td>{row.condition}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {previewRows.length > 50 && (
+                <p className="inventory-import-more">
+                  Preview yalnız ilk 50 sətri göstərir.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <footer className="inventory-import-footer">
+          <button type="button" onClick={onClose} disabled={saving}>
+            Bağla
+          </button>
+
+          <button
+            type="button"
+            className="primary"
+            onClick={handleImportSubmit}
+            disabled={saving || previewRows.length === 0 || errors.length > 0}
+          >
+            {saving ? "Import edilir..." : "Import et"}
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }

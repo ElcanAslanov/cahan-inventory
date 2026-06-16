@@ -24,6 +24,12 @@ const PERMISSION_SEED = [
     description: "İnventar məlumatlarını Excel/CSV/Print export etmək icazəsi.",
   },
   {
+  key: "inventory.import",
+  label: "İnventar import etsin",
+  group_name: "İnventarlar",
+  description: "Excel/CSV faylından toplu inventar import etmək icazəsi.",
+},
+  {
     key: "inventory.create",
     label: "Yeni inventar əlavə etsin",
     group_name: "İnventarlar",
@@ -295,6 +301,7 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "categories.view",
     "my_inventory.view",
     "my_inventory.export",
+    "inventory.import",
   ],
 
   USER: ["dashboard.view", "my_inventory.view", "my_inventory.export"],
