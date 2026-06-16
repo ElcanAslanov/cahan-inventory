@@ -408,6 +408,10 @@ function getConditionLabel(value) {
   return CONDITION_OPTIONS.find((x) => x.value === value)?.label || value || "-";
 }
 
+function isImportedItem(item) {
+  return String(item?.import_source || "").toUpperCase() === "EXCEL";
+}
+
 function getReportDateTime() {
   return new Date().toLocaleString("az-AZ", {
     day: "2-digit",
@@ -590,37 +594,73 @@ function downloadInventoryImportTemplate() {
   });
 
   templateSheet["!cols"] = INVENTORY_IMPORT_TEMPLATE_HEADERS.map((key) => ({
-    wch: Math.max(16, key.length + 4),
+    wch: Math.max(18, key.length + 6),
   }));
 
   XLSX.utils.book_append_sheet(workbook, templateSheet, "inventory_import");
 
   const infoRows = [
     ["Sahə", "Açıqlama"],
-    ["inventory_code", "Məcburi. Unikal inventar kodu. Məs: INV-0001"],
-    ["name", "Məcburi. İnventar adı."],
-    ["description", "İstəyə bağlı təsvir."],
-    ["brand", "İstəyə bağlı brand."],
-    ["model", "İstəyə bağlı model."],
-    ["serial_number", "İstəyə bağlı seriya nömrəsi."],
-    ["company_name", "Məcburi. Bazadakı şirkət adı ilə eyni olmalıdır."],
-    ["department_name", "İstəyə bağlı. Bazadakı departament adı ilə eyni olmalıdır."],
-    ["category_name", "Məcburi. Bazadakı kateqoriya adı ilə eyni olmalıdır."],
-    ["responsible_email", "İstəyə bağlı. Dolu olarsa status avtomatik ASSIGNED olacaq."],
-    ["status", "IN_STOCK, ASSIGNED, IN_REPAIR, LOST, WRITTEN_OFF, DISPOSED"],
-    ["condition", "NEW, GOOD, NORMAL, DAMAGED, UNUSABLE"],
-    ["current_location", "İstəyə bağlı cari yerləşmə."],
-    ["purchase_date", "YYYY-MM-DD formatında tarix."],
-    ["purchase_price", "Rəqəm."],
-    ["currency", "AZN, USD, EUR, TRY"],
-    ["warranty_start_date", "YYYY-MM-DD formatında tarix."],
-    ["warranty_end_date", "YYYY-MM-DD formatında tarix."],
+    ["İnventar kodu", "Məcburi. Unikal inventar kodu. Məs: INV-0001"],
+    ["İnventar adı", "Məcburi. İnventar adı."],
+    ["Təsvir", "İstəyə bağlı təsvir."],
+    ["Brend", "İstəyə bağlı brend."],
+    ["Model", "İstəyə bağlı model."],
+    ["Seriya nömrəsi", "İstəyə bağlı seriya nömrəsi."],
+    ["Şirkət adı", "Məcburi. Bazada yoxdursa avtomatik yaradılacaq."],
+    ["Departament adı", "İstəyə bağlı. Bazada yoxdursa seçilən şirkət altında avtomatik yaradılacaq."],
+    ["Kateqoriya adı", "Məcburi. Bazada yoxdursa avtomatik yaradılacaq."],
+    ["Məsul şəxsin ad soyadı", "İstəyə bağlı. Sistem hesabı olmayan işçiyə təhkim üçün istifadə olunur."],
+    ["Məsul şəxsin emaili", "İstəyə bağlı. Email sistemdə varsa həmin profilə təhkim edilir, yoxdursa external məlumat kimi saxlanılır."],
+    ["Status", "Boş buraxıla bilər. Məsul şəxs yazılıbsa avtomatik ASSIGNED olur. Dəyərlər üçün Status seçimləri sheet-inə bax."],
+    ["Vəziyyət", "Boş buraxıla bilər. Default GOOD. Dəyərlər üçün Vəziyyət seçimləri sheet-inə bax."],
+    ["Cari yerləşmə", "İstəyə bağlı cari yerləşmə."],
+    ["Alış tarixi", "YYYY-MM-DD və ya DD.MM.YYYY formatında tarix."],
+    ["Alış qiyməti", "Rəqəm."],
+    ["Valyuta", "AZN, USD, EUR, TRY"],
+    ["Zəmanət başlanğıcı", "YYYY-MM-DD və ya DD.MM.YYYY formatında tarix."],
+    ["Zəmanət bitmə tarixi", "YYYY-MM-DD və ya DD.MM.YYYY formatında tarix."],
   ];
 
   const infoSheet = XLSX.utils.aoa_to_sheet(infoRows);
-  infoSheet["!cols"] = [{ wch: 26 }, { wch: 82 }];
-
+  infoSheet["!cols"] = [{ wch: 32 }, { wch: 100 }];
   XLSX.utils.book_append_sheet(workbook, infoSheet, "Qaydalar");
+
+  const statusRows = [
+    ["Excel-də yaza biləcəyin dəyər", "Sistemdə saxlanacaq dəyər", "Mənası"],
+    ["IN_STOCK", "IN_STOCK", "Anbarda"],
+    ["Anbarda", "IN_STOCK", "Anbarda"],
+    ["ASSIGNED", "ASSIGNED", "Təhkim olunub"],
+    ["Təhkim", "ASSIGNED", "Təhkim olunub"],
+    ["IN_REPAIR", "IN_REPAIR", "Təmirdə"],
+    ["Təmirdə", "IN_REPAIR", "Təmirdə"],
+    ["LOST", "LOST", "İtib"],
+    ["İtib", "LOST", "İtib"],
+    ["WRITTEN_OFF", "WRITTEN_OFF", "Silinib"],
+    ["Silinib", "WRITTEN_OFF", "Silinib"],
+    ["DISPOSED", "DISPOSED", "İstifadədən çıxarılıb"],
+  ];
+
+  const statusSheet = XLSX.utils.aoa_to_sheet(statusRows);
+  statusSheet["!cols"] = [{ wch: 34 }, { wch: 28 }, { wch: 34 }];
+  XLSX.utils.book_append_sheet(workbook, statusSheet, "Status seçimləri");
+
+  const conditionRows = [
+    ["Excel-də yaza biləcəyin dəyər", "Sistemdə saxlanacaq dəyər", "Mənası"],
+    ["NEW", "NEW", "Yeni"],
+    ["Yeni", "NEW", "Yeni"],
+    ["GOOD", "GOOD", "Yaxşı"],
+    ["Yaxşı", "GOOD", "Yaxşı"],
+    ["NORMAL", "NORMAL", "Normal"],
+    ["DAMAGED", "DAMAGED", "Zədələnmiş"],
+    ["Zədələnmiş", "DAMAGED", "Zədələnmiş"],
+    ["UNUSABLE", "UNUSABLE", "Yararsız"],
+    ["Yararsız", "UNUSABLE", "Yararsız"],
+  ];
+
+  const conditionSheet = XLSX.utils.aoa_to_sheet(conditionRows);
+  conditionSheet["!cols"] = [{ wch: 34 }, { wch: 28 }, { wch: 34 }];
+  XLSX.utils.book_append_sheet(workbook, conditionSheet, "Vəziyyət seçimləri");
 
   XLSX.writeFile(workbook, "inventory-import-template.xlsx");
 }
@@ -641,7 +681,7 @@ function makeInventoryReportRows(list) {
     Şirkət: item.company?.name || "-",
     Departament: item.department?.name || "-",
     Kateqoriya: item.category?.name || "-",
-    "Məsul şəxs": item.responsible?.full_name || "-",
+    "Məsul şəxs": item.responsible?.full_name || item.responsible_external_name || "-",
     "Məsul şəxsin emaili": item.responsible?.email || item.responsible_external_email || "-",
     Status: getStatusLabel(item.status),
     Vəziyyət: getConditionLabel(item.condition),
@@ -656,6 +696,8 @@ function makeInventoryReportRows(list) {
     "Zəmanət statusu": item.warranty_info?.label || "-",
     "Şəkil sayı": getImageCount(item),
     "QR status": item.qr_token ? "QR hazırdır" : "QR yoxdur",
+    "Import mənbəyi": isImportedItem(item) ? "Excel import" : "Manual",
+    "Import tarixi": item.imported_at ? formatDate(item.imported_at) : "-",
     "Yaradılma tarixi": formatDate(item.created_at),
   }));
 }
@@ -757,7 +799,14 @@ function buildInventoryPrintHtml({
           <td>${item.company?.name || "-"}</td>
           <td>${item.department?.name || "-"}</td>
           <td>${item.category?.name || "-"}</td>
-          <td>${item.responsible?.full_name || "-"}</td>
+          <td>
+  ${item.responsible?.full_name || item.responsible_external_name || "-"}
+  ${
+    isImportedItem(item)
+      ? `<small style="color:#047857;font-weight:900;">Excel import</small>`
+      : ""
+  }
+</td>
           <td>${getStatusLabel(item.status)}</td>
           <td>
             <b>${item.computed_health_score ?? "-"}</b>
@@ -1289,6 +1338,8 @@ export default function InventoryPageClient() {
         description,
         responsible_external_name,
         responsible_external_email,
+        import_source,
+        imported_at,
         serial_number,
         model,
         brand,
@@ -1953,6 +2004,8 @@ export default function InventoryPageClient() {
         description,
         responsible_external_name,
         responsible_external_email,
+        import_source,
+        imported_at,
         serial_number,
         model,
         brand,
@@ -2725,15 +2778,20 @@ export default function InventoryPageClient() {
                       </td>
 
                       <td>
-                        <div className="inventory-name-cell">
-                          <strong>{item.name}</strong>
-                          <span>
-                            {[item.brand, item.model, item.serial_number]
-                              .filter(Boolean)
-                              .join(" · ") || "-"}
-                          </span>
-                        </div>
-                      </td>
+  <div className="inventory-name-cell">
+    <strong>{item.name}</strong>
+
+    <span>
+      {[item.brand, item.model, item.serial_number]
+        .filter(Boolean)
+        .join(" · ") || "-"}
+    </span>
+
+    {isImportedItem(item) && (
+      <em className="inventory-import-badge">Excel import</em>
+    )}
+  </div>
+</td>
 
                       <td>{item.company?.name || "-"}</td>
                       <td>{item.department?.name || "-"}</td>
@@ -2812,6 +2870,9 @@ export default function InventoryPageClient() {
                     <div>
                       <span>{item.inventory_code}</span>
                       <h3>{item.name}</h3>
+                      {isImportedItem(item) && (
+  <em className="inventory-import-badge">Excel import</em>
+)}
                     </div>
 
                     <InventoryStatusPill status={item.status} />
@@ -2841,7 +2902,9 @@ export default function InventoryPageClient() {
 
                     <div>
                       <span>Məsul şəxs</span>
-                      <strong>{item.responsible?.full_name || item.responsible_external_name || "-"}</strong>
+                     <strong>
+  {item.responsible?.full_name || item.responsible_external_name || "-"}
+</strong>
                     </div>
 
                     <div>
@@ -3641,6 +3704,47 @@ export default function InventoryPageClient() {
           .inventory-ghost-btn {
             width: 100%;
           }
+
+          .inventory-import-preview-head em {
+  color: #64748b;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.inventory-import-table-wrap.full {
+  max-height: 430px;
+  overflow: auto;
+}
+
+.inventory-import-table-wrap.full table {
+  min-width: 2200px;
+}
+
+.inventory-import-table-wrap.full th,
+.inventory-import-table-wrap.full td {
+  white-space: nowrap;
+}
+
+.inventory-import-preview-badge,
+.inventory-import-badge {
+  width: fit-content;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #bbf7d0;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 950;
+}
+
+.inventory-name-cell .inventory-import-badge {
+  margin-top: 7px;
+}
         }
       `}</style>
     </div>
@@ -3778,6 +3882,9 @@ function InventoryViewModal({
             <span>Inventory details</span>
             <h2>{item.name || "-"}</h2>
             <p>{item.inventory_code || "-"}</p>
+            {isImportedItem(item) && (
+  <em className="inventory-import-badge">Excel import</em>
+)}
           </div>
 
           <button type="button" onClick={onClose}>
@@ -3801,15 +3908,25 @@ function InventoryViewModal({
               <DetailRow label="Şirkət" value={item.company?.name} />
               <DetailRow label="Departament" value={item.department?.name} />
               <DetailRow label="Kateqoriya" value={item.category?.name} />
-              <DetailRow
-                label="Məsul şəxs"
-                value={item.responsible?.full_name || item.responsible_external_name}
-              />
+             <DetailRow
+  label="Məsul şəxs"
+  value={item.responsible?.full_name || item.responsible_external_name}
+/>
 
-              <DetailRow
-                label="Email"
-                value={item.responsible?.email || item.responsible_external_email}
-              />
+<DetailRow
+  label="Email"
+  value={item.responsible?.email || item.responsible_external_email}
+/>
+
+<DetailRow
+  label="Import mənbəyi"
+  value={isImportedItem(item) ? "Excel import" : "Manual"}
+/>
+
+<DetailRow
+  label="Import tarixi"
+  value={item.imported_at ? formatDate(item.imported_at) : "-"}
+/>
             </DetailCard>
 
             <DetailCard title="Maliyyə və zəmanət">
@@ -4782,17 +4899,14 @@ function InventoryImportModal({
       brand: normalizeImportValue(row.brand),
       model: normalizeImportValue(row.model),
       serial_number: normalizeImportValue(row.serial_number),
-
       company_name: companyName,
       department_name: departmentName,
       category_name: categoryName,
-
       responsible_user_id: responsible?.id || null,
       responsible_full_name: responsible?.full_name || responsibleFullName,
       responsible_email: responsibleEmail,
       responsible_external_name: responsible ? "" : responsibleFullName,
       responsible_external_email: responsible ? "" : responsibleEmail,
-
       status,
       condition,
       current_location: normalizeImportValue(row.current_location),
@@ -5030,13 +5144,17 @@ function InventoryImportModal({
           category_id: categoryId,
 
           responsible_user_id: row.responsible_user_id,
-          responsible_external_name: row.responsible_user_id
-            ? null
-            : row.responsible_external_name || null,
+          
+         responsible_external_name: row.responsible_user_id
+  ? null
+  : row.responsible_external_name || null,
 
-          responsible_external_email: row.responsible_user_id
-            ? null
-            : row.responsible_external_email || null,
+responsible_external_email: row.responsible_user_id
+  ? null
+  : row.responsible_external_email || null,
+
+import_source: "EXCEL",
+imported_at: new Date().toISOString(),
           status: row.status,
           condition: row.condition,
           current_location: row.current_location || null,
@@ -5169,54 +5287,76 @@ function InventoryImportModal({
             </div>
           )}
 
-          {previewRows.length > 0 && (
-            <div className="inventory-import-preview">
-              <div className="inventory-import-preview-head">
-                <strong>Preview</strong>
-                <span>{previewRows.length} sətir</span>
-              </div>
+         {previewRows.length > 0 && (
+  <div className="inventory-import-preview">
+    <div className="inventory-import-preview-head">
+      <div>
+        <strong>Preview</strong>
+        <span>{previewRows.length} sətir import üçün hazırdır</span>
+      </div>
 
-              <div className="inventory-import-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Sətir</th>
-                      <th>Kod</th>
-                      <th>Ad</th>
-                      <th>Şirkət</th>
-                      <th>Departament</th>
-                      <th>Kateqoriya</th>
-                      <th>Məsul email</th>
-                      <th>Status</th>
-                      <th>Vəziyyət</th>
-                    </tr>
-                  </thead>
+      <em>Bütün sütunlara baxmaq üçün cədvəli sağa-sola sürüşdür</em>
+    </div>
 
-                  <tbody>
-                    {previewRows.slice(0, 50).map((row) => (
-                      <tr key={`${row.rowNumber}-${row.inventory_code}`}>
-                        <td>{row.rowNumber}</td>
-                        <td>{row.inventory_code}</td>
-                        <td>{row.name}</td>
-                        <td>{row.company_name}</td>
-                        <td>{row.department_name || "-"}</td>
-                        <td>{row.category_name}</td>
-                        <td>{row.responsible_email || "-"}</td>
-                        <td>{row.status}</td>
-                        <td>{row.condition}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+    <div className="inventory-import-table-wrap full">
+      <table>
+        <thead>
+          <tr>
+            <th>Sətir</th>
+            <th>İnventar kodu</th>
+            <th>İnventar adı</th>
+            <th>Təsvir</th>
+            <th>Brend</th>
+            <th>Model</th>
+            <th>Seriya nömrəsi</th>
+            <th>Şirkət</th>
+            <th>Departament</th>
+            <th>Kateqoriya</th>
+            <th>Məsul şəxsin ad soyadı</th>
+            <th>Məsul şəxsin emaili</th>
+            <th>Status</th>
+            <th>Vəziyyət</th>
+            <th>Cari yerləşmə</th>
+            <th>Alış tarixi</th>
+            <th>Alış qiyməti</th>
+            <th>Valyuta</th>
+            <th>Zəmanət başlanğıcı</th>
+            <th>Zəmanət bitmə tarixi</th>
+            <th>Import</th>
+          </tr>
+        </thead>
 
-              {previewRows.length > 50 && (
-                <p className="inventory-import-more">
-                  Preview yalnız ilk 50 sətri göstərir.
-                </p>
-              )}
-            </div>
-          )}
+        <tbody>
+          {previewRows.map((row) => (
+            <tr key={`${row.rowNumber}-${row.inventory_code}`}>
+              <td>{row.rowNumber}</td>
+              <td><strong>{row.inventory_code || "-"}</strong></td>
+              <td>{row.name || "-"}</td>
+              <td>{row.description || "-"}</td>
+              <td>{row.brand || "-"}</td>
+              <td>{row.model || "-"}</td>
+              <td>{row.serial_number || "-"}</td>
+              <td>{row.company_name || "-"}</td>
+              <td>{row.department_name || "-"}</td>
+              <td>{row.category_name || "-"}</td>
+              <td>{row.responsible_full_name || row.responsible_external_name || "-"}</td>
+              <td>{row.responsible_email || row.responsible_external_email || "-"}</td>
+              <td>{getStatusLabel(row.status)}</td>
+              <td>{getConditionLabel(row.condition)}</td>
+              <td>{row.current_location || "-"}</td>
+              <td>{row.purchase_date || "-"}</td>
+              <td>{row.purchase_price ?? "-"}</td>
+              <td>{row.currency || "-"}</td>
+              <td>{row.warranty_start_date || "-"}</td>
+              <td>{row.warranty_end_date || "-"}</td>
+              <td><span className="inventory-import-preview-badge">Excel</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+)}
         </div>
 
         <footer className="inventory-import-footer">
