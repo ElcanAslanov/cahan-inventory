@@ -438,6 +438,7 @@ const INVENTORY_IMPORT_COLUMNS = [
   { key: "company_name", label: "Şirkət adı" },
   { key: "department_name", label: "Departament adı" },
   { key: "category_name", label: "Kateqoriya adı" },
+  { key: "subcategory_name", label: "Alt kateqoriya adı" },
   { key: "responsible_full_name", label: "Məsul şəxsin ad soyadı" },
   { key: "responsible_email", label: "Məsul şəxsin emaili" },
   { key: "status", label: "Status" },
@@ -473,7 +474,8 @@ const INVENTORY_IMPORT_SAMPLE_ROWS = [
     "Seriya nömrəsi": "SN123456",
     "Şirkət adı": "Cahan Holding",
     "Departament adı": "IT",
-    "Kateqoriya adı": "Laptop",
+    "Kateqoriya adı": "Elektronika",
+"Alt kateqoriya adı": "Laptop",
     "Məsul şəxsin ad soyadı": "Vüqar Məmmədov",
     "Məsul şəxsin emaili": "vuqar@gmail.com",
     Status: "IN_STOCK",
@@ -610,6 +612,7 @@ function downloadInventoryImportTemplate() {
     ["Şirkət adı", "Məcburi. Bazada yoxdursa avtomatik yaradılacaq."],
     ["Departament adı", "İstəyə bağlı. Bazada yoxdursa seçilən şirkət altında avtomatik yaradılacaq."],
     ["Kateqoriya adı", "Məcburi. Bazada yoxdursa avtomatik yaradılacaq."],
+    ["Alt kateqoriya adı", "İstəyə bağlı. Yazılıbsa həmin əsas kateqoriyanın altında yaradılacaq və inventara bağlanacaq."],
     ["Məsul şəxsin ad soyadı", "İstəyə bağlı. Sistem hesabı olmayan işçiyə təhkim üçün istifadə olunur."],
     ["Məsul şəxsin emaili", "İstəyə bağlı. Email sistemdə varsa həmin profilə təhkim edilir, yoxdursa external məlumat kimi saxlanılır."],
     ["Status", "Boş buraxıla bilər. Məsul şəxs yazılıbsa avtomatik ASSIGNED olur. Dəyərlər üçün Status seçimləri sheet-inə bax."],
@@ -681,6 +684,7 @@ function makeInventoryReportRows(list) {
     Şirkət: item.company?.name || "-",
     Departament: item.department?.name || "-",
     Kateqoriya: item.category?.name || "-",
+    "Alt kateqoriya": item.subcategory?.name || "-",
     "Məsul şəxs": item.responsible?.full_name || item.responsible_external_name || "-",
     "Məsul şəxsin emaili": item.responsible?.email || item.responsible_external_email || "-",
     Status: getStatusLabel(item.status),
@@ -798,8 +802,11 @@ function buildInventoryPrintHtml({
           </td>
           <td>${item.company?.name || "-"}</td>
           <td>${item.department?.name || "-"}</td>
-          <td>${item.category?.name || "-"}</td>
-          <td>
+         <td>
+  ${item.category?.name || "-"}
+  <small>${item.subcategory?.name || ""}</small>
+</td>
+<td>
   ${item.responsible?.full_name || item.responsible_external_name || "-"}
   ${
     isImportedItem(item)
@@ -1101,9 +1108,10 @@ export default function InventoryPageClient() {
   const [search, setSearch] = useState("");
   const [selectedStatuses, setSelectedStatuses] = useState([]);
   const [selectedHealths, setSelectedHealths] = useState([]);
-  const [selectedCompanies, setSelectedCompanies] = useState([]);
-  const [selectedCategories, setSelectedCategories] = useState([]);
-  const [createdFrom, setCreatedFrom] = useState("");
+ const [selectedCompanies, setSelectedCompanies] = useState([]);
+const [selectedCategories, setSelectedCategories] = useState([]);
+const [selectedSubcategories, setSelectedSubcategories] = useState([]);
+const [createdFrom, setCreatedFrom] = useState("");
   const [createdTo, setCreatedTo] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -1160,6 +1168,7 @@ export default function InventoryPageClient() {
     selectedHealths,
     selectedCompanies,
     selectedCategories,
+    selectedSubcategories,
     createdFrom,
     createdTo,
     pageSize,
@@ -1320,80 +1329,112 @@ export default function InventoryPageClient() {
   }
 
   async function loadItems(profileArg = me) {
-    const role = resolveProfileRole(profileArg);
-    const companyId = profileArg?.company_id || profileArg?.companies?.id || "";
+  const role = resolveProfileRole(profileArg);
+  const companyId = profileArg?.company_id || profileArg?.companies?.id || "";
 
-    if (!canViewInventory(role)) {
-      setItems([]);
-      return;
-    }
-
-    let query = supabase
-      .from("inventory_items")
-      .select(
-        `
-        id,
-        inventory_code,
-        name,
-        description,
-        responsible_external_name,
-        responsible_external_email,
-        import_source,
-        imported_at,
-        serial_number,
-        model,
-        brand,
-        status,
-        condition,
-        purchase_date,
-        purchase_price,
-        currency,
-        warranty_start_date,
-        warranty_end_date,
-        qr_token,
-        images,
-        health_score,
-        health_status,
-        current_location,
-        created_at,
-        company:companies!inventory_items_company_id_fkey (
-          id,
-          name
-        ),
-        department:departments!inventory_items_department_id_fkey (
-          id,
-          name
-        ),
-        category:inventory_categories!inventory_items_category_id_fkey (
-          id,
-          name
-        ),
-        responsible:profiles!inventory_items_responsible_user_id_fkey (
-          id,
-          full_name,
-          email
-        )
-      `
-      )
-      .order("created_at", { ascending: false });
-
-    if (isRehber(role) && companyId) {
-      query = query.eq("company_id", companyId);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("INVENTORY LOAD ERROR FULL:", JSON.stringify(error, null, 2));
-      console.error("INVENTORY LOAD ERROR MESSAGE:", error.message);
-      console.error("INVENTORY LOAD ERROR DETAILS:", error.details);
-      console.error("INVENTORY LOAD ERROR HINT:", error.hint);
-      setItems([]);
-      return;
-    }
-
-    setItems((data || []).map(enrichItem));
+  if (!canViewInventory(role)) {
+    setItems([]);
+    return;
   }
+
+  let query = supabase
+    .from("inventory_items")
+    .select(
+      `
+      id,
+      inventory_code,
+      name,
+      description,
+      responsible_external_name,
+      responsible_external_email,
+      import_source,
+      imported_at,
+      subcategory_id,
+      serial_number,
+      model,
+      brand,
+      status,
+      condition,
+      purchase_date,
+      purchase_price,
+      currency,
+      warranty_start_date,
+      warranty_end_date,
+      qr_token,
+      images,
+      health_score,
+      health_status,
+      current_location,
+      created_at,
+      company:companies!inventory_items_company_id_fkey (
+        id,
+        name
+      ),
+      department:departments!inventory_items_department_id_fkey (
+        id,
+        name
+      ),
+      category:inventory_categories!inventory_items_category_id_fkey (
+        id,
+        name,
+        parent_id
+      ),
+      responsible:profiles!inventory_items_responsible_user_id_fkey (
+        id,
+        full_name,
+        email
+      )
+    `
+    )
+    .order("created_at", { ascending: false });
+
+  if (isRehber(role) && companyId) {
+    query = query.eq("company_id", companyId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("INVENTORY LOAD ERROR FULL:", JSON.stringify(error, null, 2));
+    console.error("INVENTORY LOAD ERROR MESSAGE:", error.message);
+    console.error("INVENTORY LOAD ERROR DETAILS:", error.details);
+    console.error("INVENTORY LOAD ERROR HINT:", error.hint);
+    setItems([]);
+    return;
+  }
+
+  const subcategoryIds = Array.from(
+    new Set((data || []).map((item) => item.subcategory_id).filter(Boolean))
+  );
+
+  let subcategoryMap = new Map();
+
+  if (subcategoryIds.length > 0) {
+    const { data: subcategories, error: subcategoryError } = await supabase
+      .from("inventory_categories")
+      .select("id,name,parent_id,status")
+      .in("id", subcategoryIds);
+
+    if (subcategoryError) {
+      console.error("SUBCATEGORY LOAD ERROR:", subcategoryError);
+    } else {
+      subcategoryMap = new Map(
+        (subcategories || []).map((category) => [String(category.id), category])
+      );
+    }
+  }
+
+  const enrichedItems = (data || []).map((item) =>
+    enrichItem({
+      ...item,
+      subcategory: item.subcategory_id
+        ? subcategoryMap.get(String(item.subcategory_id)) || null
+        : null,
+    })
+  );
+
+  setItems(enrichedItems);
+}
 
   async function loadOptions(profileArg = me) {
     const role = resolveProfileRole(profileArg);
@@ -1428,10 +1469,10 @@ export default function InventoryPageClient() {
         companiesQuery,
         departmentsQuery,
         supabase
-          .from("inventory_categories")
-          .select("id,name,status")
-          .eq("status", "ACTIVE")
-          .order("name"),
+        .from("inventory_categories")
+.select("id,name,status,parent_id")
+.eq("status", "ACTIVE")
+.order("name"),
         profilesQuery,
       ]);
 
@@ -1463,18 +1504,32 @@ export default function InventoryPageClient() {
   }, [items]);
 
   const categoryOptions = useMemo(() => {
-    const map = new Map();
+  const map = new Map();
 
-    items.forEach((item) => {
-      if (item.category?.id) {
-        map.set(String(item.category.id), item.category.name);
-      }
-    });
+  items.forEach((item) => {
+    if (item.category?.id) {
+      map.set(String(item.category.id), item.category.name);
+    }
+  });
 
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [items]);
+  return Array.from(map.entries())
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "az"));
+}, [items]);
+
+const subcategoryOptions = useMemo(() => {
+  const map = new Map();
+
+  items.forEach((item) => {
+    if (item.subcategory?.id) {
+      map.set(String(item.subcategory.id), item.subcategory.name);
+    }
+  });
+
+  return Array.from(map.entries())
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "az"));
+}, [items]);
 
   const filteredItems = useMemo(() => {
     const q = normalizeText(search);
@@ -1490,6 +1545,7 @@ export default function InventoryPageClient() {
         item.company?.name,
         item.department?.name,
         item.category?.name,
+        item.subcategory?.name,
         item.responsible?.full_name,
         item.responsible?.email,
         item.current_location,
@@ -1517,6 +1573,10 @@ export default function InventoryPageClient() {
         selectedCategories.length === 0 ||
         selectedCategories.includes(String(item.category?.id || ""));
 
+      const matchesSubcategory =
+  selectedSubcategories.length === 0 ||
+  selectedSubcategories.includes(String(item.subcategory?.id || ""));
+
       const matchesCreatedDate =
         (!createdFrom && !createdTo) ||
         isDateInRange(item.created_at, createdFrom, createdTo);
@@ -1527,6 +1587,7 @@ export default function InventoryPageClient() {
         matchesHealth &&
         matchesCompany &&
         matchesCategory &&
+        matchesSubcategory &&
         matchesCreatedDate
       );
     });
@@ -1537,6 +1598,7 @@ export default function InventoryPageClient() {
     selectedHealths,
     selectedCompanies,
     selectedCategories,
+    selectedSubcategories,
     createdFrom,
     createdTo,
   ]);
@@ -1567,6 +1629,11 @@ export default function InventoryPageClient() {
         aValue = a.category?.name || "";
         bValue = b.category?.name || "";
       }
+
+      if (sortBy === "subcategory") {
+  aValue = a.subcategory?.name || "";
+  bValue = b.subcategory?.name || "";
+}
 
       if (sortBy === "responsible") {
         aValue = a.responsible?.full_name || "";
@@ -1671,7 +1738,9 @@ export default function InventoryPageClient() {
       }
 
       const departmentName = item.department?.name || "Departament seçilməyib";
-      const categoryName = item.category?.name || "Kateqoriya seçilməyib";
+      const categoryName = item.subcategory?.name
+  ? `${item.category?.name || "Kateqoriya seçilməyib"} / ${item.subcategory.name}`
+  : item.category?.name || "Kateqoriya seçilməyib";
 
       if (!company.departments.has(departmentName)) {
         company.departments.set(departmentName, {
@@ -1755,6 +1824,7 @@ export default function InventoryPageClient() {
     setSelectedHealths([]);
     setSelectedCompanies([]);
     setSelectedCategories([]);
+    setSelectedSubcategories([]);
     setCreatedFrom("");
     setCreatedTo("");
     setSortBy("created_at");
@@ -1770,6 +1840,7 @@ export default function InventoryPageClient() {
     if (selectedHealths.length) count += 1;
     if (selectedCompanies.length) count += 1;
     if (selectedCategories.length) count += 1;
+    if (selectedSubcategories.length) count += 1;
     if (createdFrom || createdTo) count += 1;
 
     return count;
@@ -1799,6 +1870,10 @@ export default function InventoryPageClient() {
     if (selectedCategories.length) {
       parts.push(`${selectedCategories.length} kateqoriya`);
     }
+
+    if (selectedSubcategories.length) {
+  parts.push(`${selectedSubcategories.length} alt kateqoriya`);
+}
 
     if (createdFrom || createdTo) {
       parts.push("tarix aralığı");
@@ -1846,9 +1921,9 @@ export default function InventoryPageClient() {
   }
 
   async function handleImportDone() {
-    await loadItems(me);
-    closeImportModal();
-  }
+  await Promise.all([loadItems(me), loadOptions(me)]);
+  closeImportModal();
+}
 
   function openViewModal(item) {
     setViewItem(item);
@@ -1969,9 +2044,9 @@ export default function InventoryPageClient() {
   }
 
   async function handleCreated() {
-    await loadItems(me);
-    closeCreateModal();
-  }
+  await Promise.all([loadItems(me), loadOptions(me)]);
+  closeCreateModal();
+}
 
   async function handleQrClick(item) {
     if (!item?.id) return;
@@ -2031,10 +2106,12 @@ export default function InventoryPageClient() {
           name
         ),
         category:inventory_categories!inventory_items_category_id_fkey (
-          id,
-          name
-        ),
-        responsible:profiles!inventory_items_responsible_user_id_fkey (
+  id,
+  name,
+  parent_id
+),
+
+responsible:profiles!inventory_items_responsible_user_id_fkey (
           id,
           full_name,
           email
@@ -2050,7 +2127,26 @@ export default function InventoryPageClient() {
       return;
     }
 
-    const enriched = enrichItem(data);
+    let subcategory = null;
+
+if (data?.subcategory_id) {
+  const { data: subcategoryRow, error: subcategoryError } = await supabase
+    .from("inventory_categories")
+    .select("id,name,parent_id,status")
+    .eq("id", data.subcategory_id)
+    .maybeSingle();
+
+  if (subcategoryError) {
+    console.error("QR SUBCATEGORY LOAD ERROR:", subcategoryError);
+  }
+
+  subcategory = subcategoryRow || null;
+}
+
+const enriched = enrichItem({
+  ...data,
+  subcategory,
+});
 
     setItems((prev) => prev.map((x) => (x.id === enriched.id ? enriched : x)));
     setViewItem((prev) => (prev?.id === enriched.id ? enriched : prev));
@@ -2090,6 +2186,14 @@ export default function InventoryPageClient() {
 
       parts.push(`Kateqoriya: ${names.join(", ")}`);
     }
+
+    if (selectedSubcategories.length) {
+  const names = subcategoryOptions
+    .filter((x) => selectedSubcategories.includes(String(x.id)))
+    .map((x) => x.name);
+
+  parts.push(`Alt kateqoriya: ${names.join(", ")}`);
+}
 
     if (createdFrom || createdTo) {
       parts.push(
@@ -2456,6 +2560,41 @@ export default function InventoryPageClient() {
                 </MinimalFilterBlock>
 
                 <MinimalFilterBlock
+  title="Alt kateqoriya"
+  subtitle={
+    selectedSubcategories.length
+      ? getSelectedNames(subcategoryOptions, selectedSubcategories).join(", ")
+      : "Hamısı"
+  }
+>
+  <div className="inventory-compact-chip-row scroll">
+    {subcategoryOptions.length === 0 ? (
+      <span className="inventory-filter-muted">
+        Alt kateqoriya yoxdur
+      </span>
+    ) : (
+      subcategoryOptions.map((item) => {
+        const id = String(item.id);
+        const selected = selectedSubcategories.includes(id);
+
+        return (
+          <button
+            key={item.id}
+            type="button"
+            className={`inventory-compact-chip ${selected ? "active" : ""}`}
+            onClick={() =>
+              toggleMultiValue(setSelectedSubcategories, id)
+            }
+          >
+            {item.name}
+          </button>
+        );
+      })
+    )}
+  </div>
+</MinimalFilterBlock>
+
+                <MinimalFilterBlock
                   title="Yaradılma tarixi"
                   subtitle={
                     createdFrom || createdTo
@@ -2724,11 +2863,18 @@ export default function InventoryPageClient() {
                       </button>
                     </th>
 
-                    <th>
-                      <button type="button" onClick={() => toggleSort("category")}>
-                        Kateqoriya <span>{sortIcon("category")}</span>
-                      </button>
-                    </th>
+             <th>
+  <button type="button" onClick={() => toggleSort("category")}>
+    Kateqoriya <span>{sortIcon("category")}</span>
+  </button>
+</th>
+
+<th>
+  <button type="button" onClick={() => toggleSort("subcategory")}>
+    Alt kateqoriya <span>{sortIcon("subcategory")}</span>
+  </button>
+</th>
+
 
                     <th>
                       <button
@@ -2796,6 +2942,7 @@ export default function InventoryPageClient() {
                       <td>{item.company?.name || "-"}</td>
                       <td>{item.department?.name || "-"}</td>
                       <td>{item.category?.name || "-"}</td>
+                      <td>{item.subcategory?.name || "-"}</td>
                       <td>{item.responsible?.full_name || item.responsible_external_name || "-"}</td>
 
                       <td>
@@ -2899,6 +3046,11 @@ export default function InventoryPageClient() {
                       <span>Kateqoriya</span>
                       <strong>{item.category?.name || "-"}</strong>
                     </div>
+
+                    <div>
+  <span>Alt kateqoriya</span>
+  <strong>{item.subcategory?.name || "-"}</strong>
+</div>
 
                     <div>
                       <span>Məsul şəxs</span>
@@ -3705,7 +3857,10 @@ export default function InventoryPageClient() {
             width: 100%;
           }
 
-          .inventory-import-preview-head em {
+         
+        }
+
+         .inventory-import-preview-head em {
   color: #64748b;
   font-size: 12px;
   font-style: normal;
@@ -3745,7 +3900,6 @@ export default function InventoryPageClient() {
 .inventory-name-cell .inventory-import-badge {
   margin-top: 7px;
 }
-        }
       `}</style>
     </div>
   );
@@ -3908,6 +4062,7 @@ function InventoryViewModal({
               <DetailRow label="Şirkət" value={item.company?.name} />
               <DetailRow label="Departament" value={item.department?.name} />
               <DetailRow label="Kateqoriya" value={item.category?.name} />
+              <DetailRow label="Alt kateqoriya" value={item.subcategory?.name} />
              <DetailRow
   label="Məsul şəxs"
   value={item.responsible?.full_name || item.responsible_external_name}
@@ -4068,6 +4223,7 @@ function InventoryEditModal({
       company_id: item.company?.id || "",
       department_id: item.department?.id || "",
       category_id: item.category?.id || "",
+      subcategory_id: item.subcategory?.id || "",
       responsible_user_id: item.responsible?.id || "",
       current_location: item.current_location || "",
       purchase_date: toInputDate(item.purchase_date),
@@ -4091,6 +4247,20 @@ function InventoryEditModal({
     return departments.filter((x) => x.company_id === form.company_id);
   }, [departments, form?.company_id]);
 
+  const parentCategories = useMemo(() => {
+  return categories
+    .filter((item) => !item.parent_id)
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "az"));
+}, [categories]);
+
+const filteredSubcategories = useMemo(() => {
+  if (!form?.category_id) return [];
+
+  return categories
+    .filter((item) => String(item.parent_id || "") === String(form.category_id))
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "az"));
+}, [categories, form?.category_id]);
+
   const filteredProfiles = useMemo(() => {
     if (!form?.company_id) return profiles;
     return profiles.filter((x) => x.company_id === form.company_id);
@@ -4104,6 +4274,10 @@ function InventoryEditModal({
         next.department_id = "";
         next.responsible_user_id = "";
       }
+
+      if (name === "category_id") {
+  next.subcategory_id = "";
+}
 
       if (name === "responsible_user_id" && value) {
         next.status = "ASSIGNED";
@@ -4152,6 +4326,7 @@ function InventoryEditModal({
       company_id: form.company_id || null,
       department_id: form.department_id || null,
       category_id: form.category_id || null,
+      subcategory_id: form.subcategory_id || null,
       responsible_user_id: form.responsible_user_id || null,
 
       current_location: form.current_location.trim() || null,
@@ -4336,20 +4511,47 @@ function InventoryEditModal({
               </select>
             </EditField>
 
-            <EditField label="Kateqoriya">
-              <select
-                value={form.category_id}
-                onChange={(e) => setField("category_id", e.target.value)}
-                disabled={!canEdit || saving}
-              >
-                <option value="">Seçilməyib</option>
-                {categories.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.name}
-                  </option>
-                ))}
-              </select>
-            </EditField>
+          <EditField label="Əsas kateqoriya">
+  <select
+    value={form.category_id}
+    onChange={(e) => setField("category_id", e.target.value)}
+    disabled={!canEdit || saving}
+  >
+    <option value="">Seçilməyib</option>
+    {parentCategories.map((x) => (
+      <option key={x.id} value={x.id}>
+        {x.name}
+      </option>
+    ))}
+  </select>
+</EditField>
+
+<EditField label="Alt kateqoriya">
+  <select
+    value={form.subcategory_id}
+    onChange={(e) => setField("subcategory_id", e.target.value)}
+    disabled={
+      !canEdit ||
+      saving ||
+      !form.category_id ||
+      filteredSubcategories.length === 0
+    }
+  >
+    <option value="">
+      {!form.category_id
+        ? "Əvvəl əsas kateqoriya seçin"
+        : filteredSubcategories.length === 0
+          ? "Alt kateqoriya yoxdur"
+          : "Seçilməyib"}
+    </option>
+
+    {filteredSubcategories.map((x) => (
+      <option key={x.id} value={x.id}>
+        {x.name}
+      </option>
+    ))}
+  </select>
+</EditField>
 
             <EditField label="Məsul şəxs">
               <select
@@ -4843,6 +5045,7 @@ function InventoryImportModal({
     const companyName = normalizeImportValue(row.company_name);
     const departmentName = normalizeImportValue(row.department_name);
     const categoryName = normalizeImportValue(row.category_name);
+    const subcategoryName = normalizeImportValue(row.subcategory_name);
     const responsibleEmail = normalizeImportValue(row.responsible_email);
     const responsibleFullName = normalizeImportValue(row.responsible_full_name);
 
@@ -4902,6 +5105,7 @@ function InventoryImportModal({
       company_name: companyName,
       department_name: departmentName,
       category_name: categoryName,
+      subcategory_name: subcategoryName,
       responsible_user_id: responsible?.id || null,
       responsible_full_name: responsible?.full_name || responsibleFullName,
       responsible_email: responsibleEmail,
@@ -5040,35 +5244,85 @@ function InventoryImportModal({
         companyNameToId.set(key, createdCompany.id);
       }
 
-      const categoryNameToId = new Map(
-        categories.map((category) => [
-          normalizeImportLookup(category.name),
-          category.id,
-        ])
-      );
+     const categoryNameToId = new Map(
+  categories
+    .filter((category) => !category.parent_id)
+    .map((category) => [normalizeImportLookup(category.name), category.id])
+);
 
-      const uniqueCategoryNames = Array.from(
-        new Set(previewRows.map((row) => row.category_name).filter(Boolean))
-      );
+const subcategoryKeyToId = new Map(
+  categories
+    .filter((category) => category.parent_id)
+    .map((category) => [
+      `${normalizeImportLookup(category.name)}::${category.parent_id}`,
+      category.id,
+    ])
+);
 
-      for (const categoryName of uniqueCategoryNames) {
-        const key = normalizeImportLookup(categoryName);
+const uniqueCategoryNames = Array.from(
+  new Set(previewRows.map((row) => row.category_name).filter(Boolean))
+);
 
-        if (categoryNameToId.has(key)) continue;
+for (const categoryName of uniqueCategoryNames) {
+  const key = normalizeImportLookup(categoryName);
 
-        const { data: createdCategory, error: categoryCreateError } = await supabase
-          .from("inventory_categories")
-          .insert({
-            name: categoryName,
-            status: "ACTIVE",
-          })
-          .select("id,name")
-          .single();
+  if (categoryNameToId.has(key)) continue;
 
-        if (categoryCreateError) throw categoryCreateError;
+  const { data: createdCategory, error: categoryCreateError } = await supabase
+    .from("inventory_categories")
+    .insert({
+      name: categoryName,
+      status: "ACTIVE",
+      parent_id: null,
+    })
+    .select("id,name,parent_id")
+    .single();
 
-        categoryNameToId.set(key, createdCategory.id);
-      }
+  if (categoryCreateError) throw categoryCreateError;
+
+  categoryNameToId.set(key, createdCategory.id);
+}
+
+const uniqueSubcategories = [];
+
+previewRows.forEach((row) => {
+  if (!row.subcategory_name || !row.category_name) return;
+
+  const parentCategoryId = categoryNameToId.get(
+    normalizeImportLookup(row.category_name)
+  );
+
+  if (!parentCategoryId) return;
+
+  const key = `${normalizeImportLookup(row.subcategory_name)}::${parentCategoryId}`;
+
+  if (!uniqueSubcategories.some((item) => item.key === key)) {
+    uniqueSubcategories.push({
+      key,
+      name: row.subcategory_name,
+      parent_id: parentCategoryId,
+    });
+  }
+});
+
+for (const subcategory of uniqueSubcategories) {
+  if (subcategoryKeyToId.has(subcategory.key)) continue;
+
+  const { data: createdSubcategory, error: subcategoryCreateError } =
+    await supabase
+      .from("inventory_categories")
+      .insert({
+        name: subcategory.name,
+        status: "ACTIVE",
+        parent_id: subcategory.parent_id,
+      })
+      .select("id,name,parent_id")
+      .single();
+
+  if (subcategoryCreateError) throw subcategoryCreateError;
+
+  subcategoryKeyToId.set(subcategory.key, createdSubcategory.id);
+}
 
       const departmentKeyToId = new Map(
         departments.map((department) => [
@@ -5128,10 +5382,17 @@ function InventoryImportModal({
           : null;
 
         const categoryId = categoryNameToId.get(
-          normalizeImportLookup(row.category_name)
-        );
+  normalizeImportLookup(row.category_name)
+);
 
-        return {
+const subcategoryId =
+  row.subcategory_name && categoryId
+    ? subcategoryKeyToId.get(
+        `${normalizeImportLookup(row.subcategory_name)}::${categoryId}`
+      )
+    : null;
+
+return {
           inventory_code: row.inventory_code,
           name: row.name,
           description: row.description || null,
@@ -5142,6 +5403,7 @@ function InventoryImportModal({
           company_id: companyId,
           department_id: departmentId || null,
           category_id: categoryId,
+          subcategory_id: subcategoryId || null,
 
           responsible_user_id: row.responsible_user_id,
           
@@ -5312,6 +5574,7 @@ imported_at: new Date().toISOString(),
             <th>Şirkət</th>
             <th>Departament</th>
             <th>Kateqoriya</th>
+            <th>Alt kateqoriya</th>
             <th>Məsul şəxsin ad soyadı</th>
             <th>Məsul şəxsin emaili</th>
             <th>Status</th>
@@ -5339,6 +5602,7 @@ imported_at: new Date().toISOString(),
               <td>{row.company_name || "-"}</td>
               <td>{row.department_name || "-"}</td>
               <td>{row.category_name || "-"}</td>
+              <td>{row.subcategory_name || "-"}</td>
               <td>{row.responsible_full_name || row.responsible_external_name || "-"}</td>
               <td>{row.responsible_email || row.responsible_external_email || "-"}</td>
               <td>{getStatusLabel(row.status)}</td>

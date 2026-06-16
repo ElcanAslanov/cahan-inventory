@@ -41,6 +41,7 @@ const INITIAL_FORM = {
   company_id: "",
   department_id: "",
   category_id: "",
+  subcategory_id: "",
   responsible_mode: "NONE",
   responsible_user_id: "",
   responsible_person_name: "",
@@ -320,7 +321,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
         departmentQuery,
         supabase
           .from("inventory_categories")
-          .select("id,name,status")
+          .select("id,name,status,parent_id")
           .eq("status", "ACTIVE")
           .order("name"),
         profileQuery,
@@ -366,6 +367,28 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
 
     setOptionsLoading(false);
   }
+
+  const parentCategories = useMemo(() => {
+    return categories
+      .filter((item) => !item.parent_id)
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "az"));
+  }, [categories]);
+
+  const filteredSubcategories = useMemo(() => {
+    if (!form.category_id) return [];
+
+    return categories
+      .filter((item) => String(item.parent_id || "") === String(form.category_id))
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "az"));
+  }, [categories, form.category_id]);
+
+  const selectedCategory = categories.find(
+    (x) => String(x.id) === String(form.category_id)
+  );
+
+  const selectedSubcategory = categories.find(
+    (x) => String(x.id) === String(form.subcategory_id)
+  );
 
   const filteredDepartments = useMemo(() => {
     if (!form.company_id) return [];
@@ -422,6 +445,10 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
 
       if (name === "department_id") {
         next.responsible_user_id = "";
+      }
+
+      if (name === "category_id") {
+        next.subcategory_id = "";
       }
 
       if (name === "responsible_mode") {
@@ -660,9 +687,18 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
     }
 
     if (
-      form.responsible_mode === "SYSTEM_USER" &&
-      !form.responsible_user_id
+      form.subcategory_id &&
+      !filteredSubcategories.some(
+        (item) => String(item.id) === String(form.subcategory_id)
+      )
     ) {
+      setActiveStep("owner");
+      setError("Alt kateqoriya seçilən əsas kateqoriyaya aid deyil.");
+      setSaving(false);
+      return;
+    }
+
+    if (form.responsible_mode === "SYSTEM_USER" && !form.responsible_user_id) {
       setActiveStep("owner");
       setError("Sistemdə olan məsul şəxsi seçin.");
       setSaving(false);
@@ -687,6 +723,7 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
       company_id: form.company_id || null,
       department_id: form.department_id || null,
       category_id: form.category_id || null,
+      subcategory_id: form.subcategory_id || null,
 
       responsible_user_id:
         form.responsible_mode === "SYSTEM_USER"
@@ -871,6 +908,16 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
               </div>
 
               <div>
+                <span>Kateqoriya</span>
+                <strong>{selectedCategory?.name || "Seçilməyib"}</strong>
+              </div>
+
+              <div>
+                <span>Alt kateqoriya</span>
+                <strong>{selectedSubcategory?.name || "Seçilməyib"}</strong>
+              </div>
+
+              <div>
                 <span>Məsul</span>
                 <strong>
                   {form.responsible_mode === "SYSTEM_USER"
@@ -1021,8 +1068,8 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
 
               {activeStep === "owner" && (
                 <FormGroup
-                  title="Şirkət və təhkim"
-                  subtitle="İnventarın şirkət, şöbə və məsul şəxs bağlantısını seçin."
+                  title="Şirkət, kateqoriya və təhkim"
+                  subtitle="İnventarın şirkət, şöbə, əsas kateqoriya, alt kateqoriya və məsul şəxs bağlantısını seçin."
                 >
                   <Field label="Şirkət">
                     <select
@@ -1060,14 +1107,43 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                     </select>
                   </Field>
 
-                  <Field label="Kateqoriya">
+                  <Field label="Əsas kateqoriya">
                     <select
                       value={form.category_id}
                       onChange={(e) => setField("category_id", e.target.value)}
                       disabled={!canCreate || saving}
                     >
                       <option value="">Seçilməyib</option>
-                      {categories.map((item) => (
+                      {parentCategories.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Alt kateqoriya">
+                    <select
+                      value={form.subcategory_id}
+                      onChange={(e) =>
+                        setField("subcategory_id", e.target.value)
+                      }
+                      disabled={
+                        !canCreate ||
+                        saving ||
+                        !form.category_id ||
+                        filteredSubcategories.length === 0
+                      }
+                    >
+                      <option value="">
+                        {!form.category_id
+                          ? "Əvvəl əsas kateqoriya seçin"
+                          : filteredSubcategories.length === 0
+                            ? "Alt kateqoriya yoxdur"
+                            : "Seçilməyib"}
+                      </option>
+
+                      {filteredSubcategories.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.name}
                         </option>
@@ -1150,6 +1226,21 @@ export default function InventoryCreateModal({ open, onClose, onCreated }) {
                       placeholder="Məs: Baş ofis, 2-ci mərtəbə"
                       disabled={!canCreate || saving}
                     />
+                  </Field>
+
+                  <Field label="Seçilən kateqoriya" full>
+                    <div className="assetInlineInfo">
+                      <strong>
+                        {selectedCategory?.name || "Əsas kateqoriya seçilməyib"}
+                        {selectedSubcategory?.name
+                          ? ` / ${selectedSubcategory.name}`
+                          : ""}
+                      </strong>
+                      <span>
+                        Alt kateqoriya seçmək məcburi deyil. Əsas kateqoriya
+                        seçildikdən sonra ona bağlı alt kateqoriyalar görünəcək.
+                      </span>
+                    </div>
                   </Field>
 
                   <Field label="Seçilən məsul şəxs" full>

@@ -9,6 +9,12 @@ const STATUS_OPTIONS = [
   { value: "INACTIVE", label: "Passiv" },
 ];
 
+const CATEGORY_TYPE_OPTIONS = [
+  { value: "ALL", label: "Hamısı" },
+  { value: "PARENT", label: "Əsas kateqoriya" },
+  { value: "SUB", label: "Alt kateqoriya" },
+];
+
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 function formatDate(value) {
@@ -39,6 +45,16 @@ function normalizeText(value) {
 
 function getStatusLabel(status) {
   return status === "ACTIVE" ? "Aktiv" : "Passiv";
+}
+
+function getCategoryType(category) {
+  return category?.parent_id ? "SUB" : "PARENT";
+}
+
+function getCategoryTypeLabel(category) {
+  return getCategoryType(category) === "SUB"
+    ? "Alt kateqoriya"
+    : "Əsas kateqoriya";
 }
 
 function compareValues(a, b, direction) {
@@ -112,6 +128,8 @@ export default function CategoriesPage() {
 
   const [search, setSearch] = useState("");
   const [selectedStatuses, setSelectedStatuses] = useState([]);
+  const [selectedType, setSelectedType] = useState("ALL");
+  const [selectedParentId, setSelectedParentId] = useState("");
   const [createdFrom, setCreatedFrom] = useState("");
   const [createdTo, setCreatedTo] = useState("");
 
@@ -129,6 +147,7 @@ export default function CategoriesPage() {
   const [form, setForm] = useState({
     name: "",
     status: "ACTIVE",
+    parent_id: "",
   });
 
   const [saving, setSaving] = useState(false);
@@ -146,7 +165,15 @@ export default function CategoriesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, selectedStatuses, createdFrom, createdTo, pageSize]);
+  }, [
+    search,
+    selectedStatuses,
+    selectedType,
+    selectedParentId,
+    createdFrom,
+    createdTo,
+    pageSize,
+  ]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -201,44 +228,111 @@ export default function CategoriesPage() {
   }
 
   async function loadCategories() {
-    setLoading(true);
+  setLoading(true);
 
-    const { data, error } = await supabase
-      .from("inventory_categories")
-      .select("id,name,status,created_at")
-      .order("created_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("inventory_categories")
+    .select("id,name,status,parent_id,created_at")
+    .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("CATEGORIES LOAD ERROR:", error);
-      setCategories([]);
-      setLoading(false);
-      return;
-    }
-
-    setCategories(data || []);
+  if (error) {
+    console.error("CATEGORIES LOAD ERROR FULL:", error);
+    console.error("CATEGORIES LOAD ERROR MESSAGE:", error.message);
+    console.error("CATEGORIES LOAD ERROR DETAILS:", error.details);
+    console.error("CATEGORIES LOAD ERROR HINT:", error.hint);
+    setCategories([]);
     setLoading(false);
+    return;
   }
+
+  setCategories(data || []);
+  setLoading(false);
+}
+
+const parentNameById = useMemo(() => {
+  const map = new Map();
+
+  categories.forEach((category) => {
+    map.set(category.id, category.name);
+  });
+
+  return map;
+}, [categories]);
+
+  const parentCategories = useMemo(() => {
+    return categories
+      .filter((category) => !category.parent_id)
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "az"));
+  }, [categories]);
+
+  const subCategoryCountByParent = useMemo(() => {
+    const map = new Map();
+
+    categories.forEach((category) => {
+      if (!category.parent_id) return;
+
+      map.set(category.parent_id, (map.get(category.parent_id) || 0) + 1);
+    });
+
+    return map;
+  }, [categories]);
+
+  const categoryTree = useMemo(() => {
+    return parentCategories.map((parent) => ({
+      ...parent,
+      children: categories
+        .filter((category) => category.parent_id === parent.id)
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "az")),
+    }));
+  }, [categories, parentCategories]);
 
   const filteredCategories = useMemo(() => {
     const q = normalizeText(search);
 
     return categories.filter((category) => {
+      const type = getCategoryType(category);
+      const parentName = parentNameById.get(category.parent_id) || "";
+
       const matchesSearch =
         !q ||
         normalizeText(category.name).includes(q) ||
-        normalizeText(getStatusLabel(category.status)).includes(q);
+        normalizeText(parentName).includes(q) ||
+        normalizeText(getStatusLabel(category.status)).includes(q) ||
+        normalizeText(getCategoryTypeLabel(category)).includes(q);
 
       const matchesStatus =
         selectedStatuses.length === 0 ||
         selectedStatuses.includes(category.status);
 
+      const matchesType = selectedType === "ALL" || selectedType === type;
+
+      const matchesParent =
+        !selectedParentId ||
+        category.parent_id === selectedParentId ||
+        category.id === selectedParentId;
+
       const matchesCreatedDate =
         (!createdFrom && !createdTo) ||
         isDateInRange(category.created_at, createdFrom, createdTo);
 
-      return matchesSearch && matchesStatus && matchesCreatedDate;
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesType &&
+        matchesParent &&
+        matchesCreatedDate
+      );
     });
-  }, [categories, search, selectedStatuses, createdFrom, createdTo]);
+  }, [
+    categories,
+    search,
+    selectedStatuses,
+    selectedType,
+    selectedParentId,
+    createdFrom,
+    createdTo,
+    parentNameById,
+  ]);
 
   const sortedCategories = useMemo(() => {
     const list = [...filteredCategories];
@@ -252,11 +346,26 @@ export default function CategoriesPage() {
         bValue = getStatusLabel(b.status);
       }
 
+      if (sortBy === "type") {
+        aValue = getCategoryTypeLabel(a);
+        bValue = getCategoryTypeLabel(b);
+      }
+
+      if (sortBy === "parent") {
+  aValue = parentNameById.get(a.parent_id) || "";
+  bValue = parentNameById.get(b.parent_id) || "";
+}
+
+      if (sortBy === "sub_count") {
+        aValue = subCategoryCountByParent.get(a.id) || 0;
+        bValue = subCategoryCountByParent.get(b.id) || 0;
+      }
+
       return compareValues(aValue, bValue, sortDir);
     });
 
     return list;
-  }, [filteredCategories, sortBy, sortDir]);
+  }, [filteredCategories, sortBy, sortDir, subCategoryCountByParent, parentNameById]);
 
   const totalPages = Math.max(1, Math.ceil(sortedCategories.length / pageSize));
 
@@ -269,11 +378,15 @@ export default function CategoriesPage() {
   const summary = useMemo(() => {
     const active = categories.filter((x) => x.status === "ACTIVE").length;
     const inactive = categories.filter((x) => x.status === "INACTIVE").length;
+    const parent = categories.filter((x) => !x.parent_id).length;
+    const sub = categories.filter((x) => x.parent_id).length;
 
     return {
       total: categories.length,
       active,
       inactive,
+      parent,
+      sub,
       shown: filteredCategories.length,
       activePercent: categories.length
         ? Math.round((active / categories.length) * 100)
@@ -311,7 +424,7 @@ export default function CategoriesPage() {
     });
   }
 
-  function openCreateModal() {
+  function openCreateModal(parentId = "") {
     if (!canCreate) {
       alert("Yeni kateqoriya əlavə etmək üçün categories.create icazəsi lazımdır.");
       return;
@@ -321,6 +434,7 @@ export default function CategoriesPage() {
     setForm({
       name: "",
       status: "ACTIVE",
+      parent_id: parentId || "",
     });
     setError("");
     setModalOpen(true);
@@ -336,6 +450,7 @@ export default function CategoriesPage() {
     setForm({
       name: category.name || "",
       status: category.status || "ACTIVE",
+      parent_id: category.parent_id || "",
     });
     setError("");
     setModalOpen(true);
@@ -376,9 +491,41 @@ export default function CategoriesPage() {
     }
 
     const name = form.name.trim();
+    const parentId = form.parent_id || null;
 
     if (!name) {
       setError("Kateqoriya adı məcburidir.");
+      return;
+    }
+
+    if (editingCategory?.id && parentId === editingCategory.id) {
+      setError("Kateqoriya öz-özünə ana kateqoriya ola bilməz.");
+      return;
+    }
+
+    const selectedParent = parentId
+      ? categories.find((category) => category.id === parentId)
+      : null;
+
+    if (selectedParent?.parent_id) {
+      setError("Alt kateqoriyanın altında ikinci səviyyə alt kateqoriya yaratmaq olmaz.");
+      return;
+    }
+
+    const duplicate = categories.find((category) => {
+      const sameName = normalizeText(category.name) === normalizeText(name);
+      const sameParent = (category.parent_id || "") === (parentId || "");
+      const differentRow = category.id !== editingCategory?.id;
+
+      return sameName && sameParent && differentRow;
+    });
+
+    if (duplicate) {
+      setError(
+        parentId
+          ? "Bu ana kateqoriyanın altında eyni adlı alt kateqoriya artıq var."
+          : "Eyni adlı əsas kateqoriya artıq var."
+      );
       return;
     }
 
@@ -391,6 +538,7 @@ export default function CategoriesPage() {
         .update({
           name,
           status: form.status,
+          parent_id: parentId,
         })
         .eq("id", editingCategory.id);
 
@@ -404,6 +552,7 @@ export default function CategoriesPage() {
       const { error } = await supabase.from("inventory_categories").insert({
         name,
         status: form.status,
+        parent_id: parentId,
       });
 
       if (error) {
@@ -429,6 +578,36 @@ export default function CategoriesPage() {
 
     setDeleting(true);
 
+    const childCount = subCategoryCountByParent.get(deleteCategory.id) || 0;
+
+    if (childCount > 0) {
+      alert(
+        "Bu əsas kateqoriyanın alt kateqoriyaları var. Əvvəl alt kateqoriyaları sil və ya başqa ana kateqoriyaya keçir."
+      );
+      setDeleting(false);
+      return;
+    }
+
+    const { count: itemCount, error: countError } = await supabase
+      .from("inventory_items")
+      .select("id", { count: "exact", head: true })
+      .or(`category_id.eq.${deleteCategory.id},subcategory_id.eq.${deleteCategory.id}`);
+
+    if (countError) {
+      console.error("CATEGORY ITEM COUNT ERROR:", countError);
+      alert(countError.message || "Kateqoriyanın istifadə vəziyyəti yoxlanmadı.");
+      setDeleting(false);
+      return;
+    }
+
+    if ((itemCount || 0) > 0) {
+      alert(
+        `Bu kateqoriya ${itemCount} inventara bağlıdır. Əvvəl həmin inventarlarda kateqoriyanı dəyiş.`
+      );
+      setDeleting(false);
+      return;
+    }
+
     const { error } = await supabase
       .from("inventory_categories")
       .delete()
@@ -436,10 +615,7 @@ export default function CategoriesPage() {
 
     if (error) {
       console.error("CATEGORY DELETE ERROR:", error);
-      alert(
-        error.message ||
-          "Kateqoriya silinərkən xəta baş verdi. Bu kateqoriya inventarlara bağlı ola bilər."
-      );
+      alert(error.message || "Kateqoriya silinərkən xəta baş verdi.");
       setDeleting(false);
       return;
     }
@@ -452,6 +628,8 @@ export default function CategoriesPage() {
   function resetFilters() {
     setSearch("");
     setSelectedStatuses([]);
+    setSelectedType("ALL");
+    setSelectedParentId("");
     setCreatedFrom("");
     setCreatedTo("");
     setSortBy("created_at");
@@ -500,8 +678,8 @@ export default function CategoriesPage() {
         <div>
           <h1>Kateqoriyalar</h1>
           <p>
-            İnventarların qruplaşdırılması üçün kateqoriyaları filterlə, sırala
-            və ümumi vəziyyəti analiz et.
+            İnventarların qruplaşdırılması üçün əsas kateqoriya və alt
+            kateqoriyaları filterlə, sırala və ümumi vəziyyəti analiz et.
           </p>
         </div>
 
@@ -509,7 +687,7 @@ export default function CategoriesPage() {
           <button
             type="button"
             className="settings-primary-btn"
-            onClick={openCreateModal}
+            onClick={() => openCreateModal()}
           >
             + Yeni kateqoriya
           </button>
@@ -531,7 +709,7 @@ export default function CategoriesPage() {
 
             <div className="categories-filter-row">
               <input
-                placeholder="Kateqoriya adına və ya statusa görə axtar..."
+                placeholder="Kateqoriya, alt kateqoriya, ana kateqoriya və statusa görə axtar..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -569,6 +747,43 @@ export default function CategoriesPage() {
               </label>
             </div>
 
+            <div className="categories-filter-section-title">Tip</div>
+
+            <div className="categories-chip-row">
+              {CATEGORY_TYPE_OPTIONS.map((item) => {
+                const selected = selectedType === item.value;
+
+                return (
+                  <button
+                    key={item.value}
+                    type="button"
+                    className={`categories-filter-chip ${selected ? "active" : ""}`}
+                    onClick={() => setSelectedType(item.value)}
+                  >
+                    <span>{selected ? "✓" : "+"}</span>
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="categories-filter-section-title">Ana kateqoriya</div>
+
+            <div className="categories-select-row">
+              <select
+                value={selectedParentId}
+                onChange={(e) => setSelectedParentId(e.target.value)}
+              >
+                <option value="">Hamısı</option>
+
+                {parentCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="categories-filter-section-title">Statuslar</div>
 
             <div className="categories-chip-row">
@@ -579,9 +794,7 @@ export default function CategoriesPage() {
                   <button
                     key={status.value}
                     type="button"
-                    className={`categories-filter-chip ${
-                      selected ? "active" : ""
-                    }`}
+                    className={`categories-filter-chip ${selected ? "active" : ""}`}
                     onClick={() => toggleStatus(status.value)}
                   >
                     <span>{selected ? "✓" : "+"}</span>
@@ -601,6 +814,16 @@ export default function CategoriesPage() {
             <div>
               <span>Ümumi</span>
               <strong>{summary.total}</strong>
+            </div>
+
+            <div>
+              <span>Əsas</span>
+              <strong>{summary.parent}</strong>
+            </div>
+
+            <div>
+              <span>Alt</span>
+              <strong>{summary.sub}</strong>
             </div>
 
             <div>
@@ -627,30 +850,38 @@ export default function CategoriesPage() {
                     <thead>
                       <tr>
                         <th>
-                          <button
-                            type="button"
-                            onClick={() => toggleSort("name")}
-                          >
+                          <button type="button" onClick={() => toggleSort("name")}>
                             Kateqoriya adı <span>{sortIcon("name")}</span>
                           </button>
                         </th>
 
                         <th>
-                          <button
-                            type="button"
-                            onClick={() => toggleSort("status")}
-                          >
+                          <button type="button" onClick={() => toggleSort("type")}>
+                            Tip <span>{sortIcon("type")}</span>
+                          </button>
+                        </th>
+
+                        <th>
+                          <button type="button" onClick={() => toggleSort("parent")}>
+                            Ana kateqoriya <span>{sortIcon("parent")}</span>
+                          </button>
+                        </th>
+
+                        <th>
+                          <button type="button" onClick={() => toggleSort("sub_count")}>
+                            Alt kateqoriya sayı <span>{sortIcon("sub_count")}</span>
+                          </button>
+                        </th>
+
+                        <th>
+                          <button type="button" onClick={() => toggleSort("status")}>
                             Status <span>{sortIcon("status")}</span>
                           </button>
                         </th>
 
                         <th>
-                          <button
-                            type="button"
-                            onClick={() => toggleSort("created_at")}
-                          >
-                            Yaradılma tarixi{" "}
-                            <span>{sortIcon("created_at")}</span>
+                          <button type="button" onClick={() => toggleSort("created_at")}>
+                            Yaradılma tarixi <span>{sortIcon("created_at")}</span>
                           </button>
                         </th>
 
@@ -659,103 +890,168 @@ export default function CategoriesPage() {
                     </thead>
 
                     <tbody>
-                      {paginatedCategories.map((category) => (
-                        <tr key={category.id}>
-                          <td>
-                            <div className="category-name-cell">
-                              <div className="category-avatar">
-                                {(category.name || "K")
-                                  .slice(0, 1)
-                                  .toUpperCase()}
-                              </div>
+                      {paginatedCategories.map((category) => {
+                        const isSub = Boolean(category.parent_id);
+                        const childCount =
+                          subCategoryCountByParent.get(category.id) || 0;
 
-                              <div>
-                                <strong className="settings-name">
-                                  {category.name}
-                                </strong>
-                              </div>
-                            </div>
-                          </td>
-
-                          <td>
-                            <StatusPill status={category.status} />
-                          </td>
-
-                          <td>{formatDate(category.created_at)}</td>
-
-                          {hasRowActions && (
+                        return (
+                          <tr key={category.id}>
                             <td>
-                              <div className="settings-actions">
-                                {canEdit && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditModal(category)}
-                                  >
-                                    Düzəlt
-                                  </button>
-                                )}
+                              <div className="category-name-cell">
+                                <div
+                                  className={`category-avatar ${
+                                    isSub ? "sub" : ""
+                                  }`}
+                                >
+                                  {(category.name || "K")
+                                    .slice(0, 1)
+                                    .toUpperCase()}
+                                </div>
 
-                                {canDelete && (
-                                  <button
-                                    type="button"
-                                    className="danger"
-                                    onClick={() => openDeleteModal(category)}
-                                  >
-                                    Sil
-                                  </button>
-                                )}
+                                <div>
+                                  <strong className="settings-name">
+                                    {isSub ? "↳ " : ""}
+                                    {category.name}
+                                  </strong>
+
+                                  {isSub && (
+                                    <span className="category-sub-note">
+                                      {parentNameById.get(category.parent_id) || "Ana kateqoriya yoxdur"}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </td>
-                          )}
-                        </tr>
-                      ))}
+
+                            <td>
+                              <TypePill category={category} />
+                            </td>
+
+                            <td>{parentNameById.get(category.parent_id) || "-"}</td>
+
+                            <td>{isSub ? "-" : childCount}</td>
+
+                            <td>
+                              <StatusPill status={category.status} />
+                            </td>
+
+                            <td>{formatDate(category.created_at)}</td>
+
+                            {hasRowActions && (
+                              <td>
+                                <div className="settings-actions">
+                                  {!isSub && canCreate && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openCreateModal(category.id)}
+                                    >
+                                      + Alt
+                                    </button>
+                                  )}
+
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditModal(category)}
+                                    >
+                                      Düzəlt
+                                    </button>
+                                  )}
+
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      className="danger"
+                                      onClick={() => openDeleteModal(category)}
+                                    >
+                                      Sil
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
 
                 <div className="settings-mobile-list">
-                  {paginatedCategories.map((category) => (
-                    <article className="settings-mobile-card" key={category.id}>
-                      <div className="settings-mobile-top">
-                        <div>
-                          <span>Kateqoriya</span>
-                          <h3>{category.name}</h3>
+                  {paginatedCategories.map((category) => {
+                    const isSub = Boolean(category.parent_id);
+                    const childCount =
+                      subCategoryCountByParent.get(category.id) || 0;
+
+                    return (
+                      <article className="settings-mobile-card" key={category.id}>
+                        <div className="settings-mobile-top">
+                          <div>
+                            <span>{isSub ? "Alt kateqoriya" : "Əsas kateqoriya"}</span>
+                            <h3>{isSub ? "↳ " : ""}{category.name}</h3>
+                            {isSub && <p>{parentNameById.get(category.parent_id) || "-"}</p>}
+                          </div>
+
+                          <StatusPill status={category.status} />
                         </div>
 
-                        <StatusPill status={category.status} />
-                      </div>
+                        <div className="settings-mobile-grid">
+                          <div>
+                            <span>Tip</span>
+                            <strong>{getCategoryTypeLabel(category)}</strong>
+                          </div>
 
-                      <div className="settings-mobile-grid">
-                        <div>
-                          <span>Yaradılma tarixi</span>
-                          <strong>{formatDate(category.created_at)}</strong>
+                          <div>
+                            <span>Ana kateqoriya</span>
+                            <strong>{parentNameById.get(category.parent_id) || "-"}</strong>
+                          </div>
+
+                          <div>
+                            <span>Alt sayı</span>
+                            <strong>{isSub ? "-" : childCount}</strong>
+                          </div>
+
+                          <div>
+                            <span>Yaradılma tarixi</span>
+                            <strong>{formatDate(category.created_at)}</strong>
+                          </div>
                         </div>
-                      </div>
 
-                      {hasRowActions && (
-                        <div className="settings-mobile-actions">
-                          {canEdit && (
-                            <button
-                              type="button"
-                              onClick={() => openEditModal(category)}
-                            >
-                              Düzəlt
-                            </button>
-                          )}
+                        {hasRowActions && (
+                          <div className="settings-mobile-actions">
+                            {!isSub && canCreate && (
+                              <button
+                                type="button"
+                                onClick={() => openCreateModal(category.id)}
+                              >
+                                + Alt
+                              </button>
+                            )}
 
-                          {canDelete && (
-                            <button
-                              type="button"
-                              className="danger"
-                              onClick={() => openDeleteModal(category)}
-                            >
-                              Sil
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </article>
-                  ))}
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(category)}
+                              >
+                                Düzəlt
+                              </button>
+                            )}
+
+                            {canDelete && (
+                              <button
+                                type="button"
+                                className="danger"
+                                onClick={() => openDeleteModal(category)}
+                              >
+                                Sil
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
 
                 <div className="categories-pagination">
@@ -852,15 +1148,47 @@ export default function CategoriesPage() {
 
             <div className="categories-floating-stats">
               <div>
-                <span>Filter nəticəsi</span>
-                <strong>{summary.shown}</strong>
+                <span>Əsas kateqoriya</span>
+                <strong>{summary.parent}</strong>
               </div>
 
               <div>
-                <span>Ümumi baza</span>
-                <strong>{summary.total}</strong>
+                <span>Alt kateqoriya</span>
+                <strong>{summary.sub}</strong>
               </div>
             </div>
+          </div>
+
+          <div className="categories-tree-card">
+            <div className="categories-chart-head">
+              <h3>Kateqoriya ağacı</h3>
+            </div>
+
+            {categoryTree.length === 0 ? (
+              <div className="categories-tree-empty">Kateqoriya yoxdur.</div>
+            ) : (
+              <div className="categories-tree-list">
+                {categoryTree.map((parent) => (
+                  <div key={parent.id} className="categories-tree-parent">
+                    <div>
+                      <strong>{parent.name}</strong>
+                      <span>{parent.children.length} alt kateqoriya</span>
+                    </div>
+
+                    {parent.children.length > 0 && (
+                      <ul>
+                        {parent.children.map((child) => (
+                          <li key={child.id}>
+                            <span>{child.name}</span>
+                            <StatusPill status={child.status} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </aside>
       </div>
@@ -874,6 +1202,7 @@ export default function CategoriesPage() {
           setForm={setForm}
           saving={saving}
           error={error}
+          parentCategories={parentCategories}
           onClose={closeModal}
           onSubmit={handleSubmit}
         />
@@ -883,7 +1212,7 @@ export default function CategoriesPage() {
         <DeleteConfirmModal
           item={deleteCategory}
           title="Kateqoriya silinsin?"
-          text="kateqoriyasını silmək üzrəsən. Bu kateqoriya inventarlara bağlıdırsa silinməyə bilər."
+          text="kateqoriyasını silmək üzrəsən. Bu kateqoriya inventarlara bağlıdırsa və ya altında alt kateqoriya varsa silinməyə bilər."
           deleting={deleting}
           onClose={() => {
             if (!deleting) setDeleteCategory(null);
@@ -903,17 +1232,18 @@ function CategoryModal({
   setForm,
   saving,
   error,
+  parentCategories,
   onClose,
   onSubmit,
 }) {
   if (!open) return null;
 
+  const availableParents = parentCategories.filter(
+    (category) => category.id !== editingCategory?.id
+  );
+
   return (
-    <div
-      className={`settings-modal-root smooth-modal-root ${
-        visible ? "show" : ""
-      }`}
-    >
+    <div className={`settings-modal-root smooth-modal-root ${visible ? "show" : ""}`}>
       <button
         type="button"
         className="settings-modal-backdrop smooth-modal-backdrop"
@@ -938,6 +1268,47 @@ function CategoryModal({
 
         <div className="settings-modal-body">
           <label className="settings-field">
+            <span>Kateqoriya tipi</span>
+            <select
+              value={form.parent_id ? "SUB" : "PARENT"}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  parent_id: e.target.value === "SUB" ? prev.parent_id : "",
+                }))
+              }
+              disabled={saving}
+            >
+              <option value="PARENT">Əsas kateqoriya</option>
+              <option value="SUB">Alt kateqoriya</option>
+            </select>
+          </label>
+
+          {(form.parent_id || availableParents.length > 0) && (
+            <label className="settings-field">
+              <span>Ana kateqoriya</span>
+              <select
+                value={form.parent_id}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    parent_id: e.target.value,
+                  }))
+                }
+                disabled={saving || availableParents.length === 0}
+              >
+                <option value="">Əsas kateqoriya kimi saxla</option>
+
+                {availableParents.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <label className="settings-field">
             <span>Kateqoriya adı *</span>
             <input
               value={form.name}
@@ -947,8 +1318,9 @@ function CategoryModal({
                   name: e.target.value,
                 }))
               }
-              placeholder="Məs: Laptop, Printer, Telefon"
+              placeholder="Məs: Elektronika, Laptop, Printer"
               required
+              disabled={saving}
             />
           </label>
 
@@ -962,6 +1334,7 @@ function CategoryModal({
                   status: e.target.value,
                 }))
               }
+              disabled={saving}
             >
               {STATUS_OPTIONS.map((status) => (
                 <option key={status.value} value={status.value}>
@@ -990,6 +1363,16 @@ function StatusPill({ status }) {
   return (
     <span className={`settings-status status-${status || "INACTIVE"}`}>
       {status === "ACTIVE" ? "Aktiv" : "Passiv"}
+    </span>
+  );
+}
+
+function TypePill({ category }) {
+  const isSub = Boolean(category?.parent_id);
+
+  return (
+    <span className={`settings-status ${isSub ? "status-SUB" : "status-PARENT"}`}>
+      {isSub ? "Alt" : "Əsas"}
     </span>
   );
 }
