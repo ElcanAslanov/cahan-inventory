@@ -4,245 +4,54 @@ import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 
 const PERMISSION_SEED = [
-  {
-    key: "dashboard.view",
-    label: "Dashboard görsün",
-    group_name: "Əsas",
-    description: "Dashboard səhifəsinə baxmaq icazəsi.",
-  },
+  { key: "dashboard.view", label: "Dashboard görsün", group_name: "Əsas", description: "Dashboard səhifəsinə baxmaq icazəsi." },
 
-  {
-    key: "inventory.view",
-    label: "İnventarlara baxsın",
-    group_name: "İnventarlar",
-    description: "İnventar siyahısını və detalları görmək icazəsi.",
-  },
-  {
-    key: "inventory.export",
-    label: "İnventar export etsin",
-    group_name: "İnventarlar",
-    description: "İnventar məlumatlarını Excel/CSV/Print export etmək icazəsi.",
-  },
-  {
-  key: "inventory.import",
-  label: "İnventar import etsin",
-  group_name: "İnventarlar",
-  description: "Excel/CSV faylından toplu inventar import etmək icazəsi.",
-},
-  {
-    key: "inventory.create",
-    label: "Yeni inventar əlavə etsin",
-    group_name: "İnventarlar",
-    description: "Yeni inventar yaratmaq icazəsi.",
-  },
-  {
-    key: "inventory.edit",
-    label: "İnventarı düzəltsin",
-    group_name: "İnventarlar",
-    description: "Mövcud inventar məlumatlarını dəyişmək icazəsi.",
-  },
-  {
-    key: "inventory.delete",
-    label: "İnventarı silsin",
-    group_name: "İnventarlar",
-    description: "İnventarı sistemdən silmək icazəsi.",
-  },
-  {
-    key: "inventory.qr.manage",
-    label: "QR yaratsın / idarə etsin",
-    group_name: "İnventarlar",
-    description: "İnventar üçün QR yaratmaq və QR əməliyyatları icazəsi.",
-  },
-  {
-    key: "inventory.transfer",
-    label: "İnventar təhkim / transfer etsin",
-    group_name: "İnventarlar",
-    description: "İnventarın yerdəyişmə və təhkim əməliyyatlarını etmək icazəsi.",
-  },
+  { key: "inventory.view", label: "İnventarlara baxsın", group_name: "İnventarlar", description: "İnventar siyahısını və detalları görmək icazəsi." },
+  { key: "inventory.export", label: "İnventar export etsin", group_name: "İnventarlar", description: "İnventar məlumatlarını Excel/CSV/Print export etmək icazəsi." },
+  { key: "inventory.import", label: "İnventar import etsin", group_name: "İnventarlar", description: "Excel/CSV faylından toplu inventar import etmək icazəsi." },
+  { key: "inventory.create", label: "Yeni inventar əlavə etsin", group_name: "İnventarlar", description: "Yeni inventar yaratmaq icazəsi." },
+  { key: "inventory.edit", label: "İnventarı düzəltsin", group_name: "İnventarlar", description: "Mövcud inventar məlumatlarını dəyişmək icazəsi." },
+  { key: "inventory.delete", label: "İnventarı silsin", group_name: "İnventarlar", description: "İnventarı sistemdən silmək icazəsi." },
+  { key: "inventory.qr.manage", label: "QR yaratsın / idarə etsin", group_name: "İnventarlar", description: "İnventar üçün QR yaratmaq və QR əməliyyatları icazəsi." },
+  { key: "inventory.transfer", label: "İnventar təhkim / transfer etsin", group_name: "İnventarlar", description: "İnventarın yerdəyişmə və təhkim əməliyyatlarını etmək icazəsi." },
 
-  {
-    key: "transfers.view",
-    label: "Yerdəyişmə səhifəsinə baxsın",
-    group_name: "Yerdəyişmə",
-    description: "Yerdəyişmə səhifəsini görmək icazəsi.",
-  },
-  {
-    key: "transfers.create",
-    label: "Yerdəyişmə yaratsın",
-    group_name: "Yerdəyişmə",
-    description: "Yeni yerdəyişmə əməliyyatı yaratmaq icazəsi.",
-  },
-  {
-    key: "transfers.edit",
-    label: "Yerdəyişməni düzəltsin",
-    group_name: "Yerdəyişmə",
-    description: "Yerdəyişmə məlumatlarını dəyişmək icazəsi.",
-  },
-  {
-    key: "transfers.delete",
-    label: "Yerdəyişməni silsin",
-    group_name: "Yerdəyişmə",
-    description: "Yerdəyişmə məlumatlarını silmək icazəsi.",
-  },
+  { key: "transfers.view", label: "Yerdəyişmə səhifəsinə baxsın", group_name: "Yerdəyişmə", description: "Yerdəyişmə səhifəsini görmək icazəsi." },
+  { key: "transfers.create", label: "Yerdəyişmə yaratsın", group_name: "Yerdəyişmə", description: "Yeni yerdəyişmə əməliyyatı yaratmaq icazəsi." },
+  { key: "transfers.edit", label: "Yerdəyişməni düzəltsin", group_name: "Yerdəyişmə", description: "Yerdəyişmə məlumatlarını dəyişmək icazəsi." },
+  { key: "transfers.delete", label: "Yerdəyişməni silsin", group_name: "Yerdəyişmə", description: "Yerdəyişmə məlumatlarını silmək icazəsi." },
 
-  {
-    key: "logs.view",
-    label: "Loglara baxsın",
-    group_name: "Loglar",
-    description: "İnventar loglarına baxmaq icazəsi.",
-  },
-  {
-    key: "logs.export",
-    label: "Log export etsin",
-    group_name: "Loglar",
-    description: "Logları Excel/CSV/Print export etmək icazəsi.",
-  },
+  { key: "logs.view", label: "Loglara baxsın", group_name: "Loglar", description: "İnventar loglarına baxmaq icazəsi." },
+  { key: "logs.export", label: "Log export etsin", group_name: "Loglar", description: "Logları Excel/CSV/Print export etmək icazəsi." },
 
-  {
-    key: "companies.view",
-    label: "Şirkətlərə baxsın",
-    group_name: "Şirkətlər",
-    description: "Şirkət siyahısını görmək icazəsi.",
-  },
-  {
-    key: "companies.create",
-    label: "Şirkət əlavə etsin",
-    group_name: "Şirkətlər",
-    description: "Yeni şirkət əlavə etmək icazəsi.",
-  },
-  {
-    key: "companies.edit",
-    label: "Şirkəti düzəltsin",
-    group_name: "Şirkətlər",
-    description: "Şirkət məlumatlarını dəyişmək icazəsi.",
-  },
-  {
-    key: "companies.delete",
-    label: "Şirkəti silsin",
-    group_name: "Şirkətlər",
-    description: "Şirkəti silmək icazəsi.",
-  },
+  { key: "companies.view", label: "Şirkətlərə baxsın", group_name: "Şirkətlər", description: "Şirkət siyahısını görmək icazəsi." },
+  { key: "companies.create", label: "Şirkət əlavə etsin", group_name: "Şirkətlər", description: "Yeni şirkət əlavə etmək icazəsi." },
+  { key: "companies.edit", label: "Şirkəti düzəltsin", group_name: "Şirkətlər", description: "Şirkət məlumatlarını dəyişmək icazəsi." },
+  { key: "companies.delete", label: "Şirkəti silsin", group_name: "Şirkətlər", description: "Şirkəti silmək icazəsi." },
 
-  {
-    key: "departments.view",
-    label: "Departamentlərə baxsın",
-    group_name: "Departamentlər",
-    description: "Departament siyahısını görmək icazəsi.",
-  },
-  {
-    key: "departments.create",
-    label: "Departament əlavə etsin",
-    group_name: "Departamentlər",
-    description: "Yeni departament yaratmaq icazəsi.",
-  },
-  {
-    key: "departments.edit",
-    label: "Departamenti düzəltsin",
-    group_name: "Departamentlər",
-    description: "Departament məlumatlarını dəyişmək icazəsi.",
-  },
-  {
-    key: "departments.delete",
-    label: "Departamenti silsin",
-    group_name: "Departamentlər",
-    description: "Departamenti silmək icazəsi.",
-  },
+  { key: "departments.view", label: "Departamentlərə baxsın", group_name: "Departamentlər", description: "Departament siyahısını görmək icazəsi." },
+  { key: "departments.create", label: "Departament əlavə etsin", group_name: "Departamentlər", description: "Yeni departament yaratmaq icazəsi." },
+  { key: "departments.edit", label: "Departamenti düzəltsin", group_name: "Departamentlər", description: "Departament məlumatlarını dəyişmək icazəsi." },
+  { key: "departments.delete", label: "Departamenti silsin", group_name: "Departamentlər", description: "Departamenti silmək icazəsi." },
 
-  {
-    key: "categories.view",
-    label: "Kateqoriyalara baxsın",
-    group_name: "Kateqoriyalar",
-    description: "Kateqoriya siyahısını görmək icazəsi.",
-  },
-  {
-    key: "categories.create",
-    label: "Kateqoriya əlavə etsin",
-    group_name: "Kateqoriyalar",
-    description: "Yeni kateqoriya yaratmaq icazəsi.",
-  },
-  {
-    key: "categories.edit",
-    label: "Kateqoriyanı düzəltsin",
-    group_name: "Kateqoriyalar",
-    description: "Kateqoriya məlumatlarını dəyişmək icazəsi.",
-  },
-  {
-    key: "categories.delete",
-    label: "Kateqoriyanı silsin",
-    group_name: "Kateqoriyalar",
-    description: "Kateqoriyanı silmək icazəsi.",
-  },
+  { key: "categories.view", label: "Kateqoriyalara baxsın", group_name: "Kateqoriyalar", description: "Kateqoriya siyahısını görmək icazəsi." },
+  { key: "categories.create", label: "Kateqoriya əlavə etsin", group_name: "Kateqoriyalar", description: "Yeni kateqoriya yaratmaq icazəsi." },
+  { key: "categories.edit", label: "Kateqoriyanı düzəltsin", group_name: "Kateqoriyalar", description: "Kateqoriya məlumatlarını dəyişmək icazəsi." },
+  { key: "categories.delete", label: "Kateqoriyanı silsin", group_name: "Kateqoriyalar", description: "Kateqoriyanı silmək icazəsi." },
 
-  {
-    key: "users.view",
-    label: "İstifadəçilərə baxsın",
-    group_name: "İstifadəçilər",
-    description: "İstifadəçi siyahısını görmək icazəsi.",
-  },
-  {
-    key: "users.export",
-    label: "İstifadəçiləri export etsin",
-    group_name: "İstifadəçilər",
-    description: "İstifadəçi siyahısını Excel/CSV/Print export etmək icazəsi.",
-  },
-  {
-    key: "users.create",
-    label: "İstifadəçi əlavə etsin",
-    group_name: "İstifadəçilər",
-    description: "Yeni istifadəçi yaratmaq icazəsi.",
-  },
-  {
-    key: "users.edit",
-    label: "İstifadəçini düzəltsin",
-    group_name: "İstifadəçilər",
-    description: "İstifadəçi məlumatlarını dəyişmək icazəsi.",
-  },
-  {
-    key: "users.delete",
-    label: "İstifadəçini silsin",
-    group_name: "İstifadəçilər",
-    description: "İstifadəçini silmək icazəsi.",
-  },
+  { key: "users.view", label: "İstifadəçilərə baxsın", group_name: "İstifadəçilər", description: "İstifadəçi siyahısını görmək icazəsi." },
+  { key: "users.export", label: "İstifadəçiləri export etsin", group_name: "İstifadəçilər", description: "İstifadəçi siyahısını Excel/CSV/Print export etmək icazəsi." },
+  { key: "users.create", label: "İstifadəçi əlavə etsin", group_name: "İstifadəçilər", description: "Yeni istifadəçi yaratmaq icazəsi." },
+  { key: "users.edit", label: "İstifadəçini düzəltsin", group_name: "İstifadəçilər", description: "İstifadəçi məlumatlarını dəyişmək icazəsi." },
+  { key: "users.delete", label: "İstifadəçini silsin", group_name: "İstifadəçilər", description: "İstifadəçini silmək icazəsi." },
 
-  {
-    key: "permissions.view",
-    label: "Yetkiləndirməyə baxsın",
-    group_name: "Yetkiləndirmə",
-    description: "Permission səhifəsinə baxmaq icazəsi.",
-  },
-  {
-    key: "permissions.edit",
-    label: "Yetkiləndirməni dəyişsin",
-    group_name: "Yetkiləndirmə",
-    description: "Rol və istifadəçi permission-larını dəyişmək icazəsi.",
-  },
+  { key: "permissions.view", label: "Yetkiləndirməyə baxsın", group_name: "Yetkiləndirmə", description: "Permission səhifəsinə baxmaq icazəsi." },
+  { key: "permissions.edit", label: "Yetkiləndirməni dəyişsin", group_name: "Yetkiləndirmə", description: "Rol və istifadəçi permission-larını dəyişmək icazəsi." },
 
-  {
-    key: "my_inventory.view",
-    label: "Mənim inventarlarım səhifəsinə baxsın",
-    group_name: "Mənim inventarlarım",
-    description: "İstifadəçinin öz inventarlarına baxmaq icazəsi.",
-  },
-  {
-    key: "my_inventory.export",
-    label: "Mənim inventarlarım export etsin",
-    group_name: "Mənim inventarlarım",
-    description:
-      "Mənim inventarlarım səhifəsində Excel və Print report almaq icazəsi.",
-  },
+  { key: "my_inventory.view", label: "Mənim inventarlarım səhifəsinə baxsın", group_name: "Mənim inventarlarım", description: "İstifadəçinin öz inventarlarına baxmaq icazəsi." },
+  { key: "my_inventory.export", label: "Mənim inventarlarım export etsin", group_name: "Mənim inventarlarım", description: "Mənim inventarlarım səhifəsində Excel və Print report almaq icazəsi." },
 
-  {
-    key: "audit.view",
-    label: "Audit / hesabatlara baxsın",
-    group_name: "Audit / Hesabat",
-    description: "Audit və hesabat səhifəsinə baxmaq icazəsi.",
-  },
-  {
-    key: "audit.export",
-    label: "Audit / hesabat export etsin",
-    group_name: "Audit / Hesabat",
-    description: "Audit və hesabat məlumatlarını export etmək icazəsi.",
-  },
+  { key: "audit.view", label: "Audit / hesabatlara baxsın", group_name: "Audit / Hesabat", description: "Audit və hesabat səhifəsinə baxmaq icazəsi." },
+  { key: "audit.export", label: "Audit / hesabat export etsin", group_name: "Audit / Hesabat", description: "Audit və hesabat məlumatlarını export etmək icazəsi." },
 ];
 
 const DEFAULT_ROLE_PERMISSIONS = {
@@ -260,7 +69,6 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "my_inventory.view",
     "my_inventory.export",
   ],
-
   VIEWER: [
     "dashboard.view",
     "inventory.view",
@@ -275,7 +83,6 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "my_inventory.view",
     "my_inventory.export",
   ],
-
   AUDIT: [
     "dashboard.view",
     "inventory.view",
@@ -285,7 +92,6 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "audit.view",
     "audit.export",
   ],
-
   REHBER: [
     "dashboard.view",
     "inventory.view",
@@ -303,7 +109,6 @@ const DEFAULT_ROLE_PERMISSIONS = {
     "my_inventory.export",
     "inventory.import",
   ],
-
   USER: ["dashboard.view", "my_inventory.view", "my_inventory.export"],
 };
 
@@ -539,42 +344,93 @@ async function seedDefaultRolePermissions(supabase) {
   }
 }
 
-export async function GET(req) {
-  const supabase = getAdminClient();
+/*
+  VACIB:
+  Əvvəl seed hər GET-də işləyirdi və səhifəni gec açırdı.
+  İndi seed yalnız ?seed=1 göndəriləndə işləyir.
 
-  try {
-    const guard = await requireAdmin(req, supabase);
+  Bir dəfə lazım olanda bu URL-i aç:
+  /api/admin/permissions?seed=1
+*/
+async function maybeSeed(req, supabase) {
+  const { searchParams } = new URL(req.url);
+  const shouldSeed = searchParams.get("seed") === "1";
 
-    if (guard.error) return guard.error;
+  if (!shouldSeed) return;
 
-    await seedPermissions(supabase);
-    await seedDefaultRolePermissions(supabase);
+  await seedPermissions(supabase);
+  await seedDefaultRolePermissions(supabase);
+}
 
-    const [
-      permissionsRes,
-      rolesRes,
-      companiesRes,
-      profilesRes,
-      rolePermissionsRes,
-      userPermissionsRes,
-      roleCompanyAccessRes,
-      userCompanyAccessRes,
-    ] = await Promise.all([
-      supabase
-        .from("permissions")
-        .select("id,key,label,group_name,description,created_at")
-        .order("group_name", { ascending: true })
-        .order("key", { ascending: true }),
+function ensureOkResponses(responses = []) {
+  const failed = responses.find((res) => res.error);
 
-      supabase
-        .from("roles")
-        .select("id,name,label")
-        .order("name", { ascending: true }),
+  if (failed?.error) {
+    console.error("ADMIN_PERMISSIONS_LOAD_FAILED:", {
+      message: failed.error.message,
+      details: failed.error.details,
+      hint: failed.error.hint,
+      code: failed.error.code,
+    });
 
-      supabase
-        .from("companies")
-        .select("id,name,status")
-        .order("name", { ascending: true }),
+    throw failed.error;
+  }
+}
+
+async function loadBaseScope(supabase) {
+  const [
+    permissionsRes,
+    rolesRes,
+    companiesRes,
+    rolePermissionsRes,
+    roleCompanyAccessRes,
+  ] = await Promise.all([
+    supabase
+      .from("permissions")
+      .select("id,key,label,group_name,description,created_at")
+      .order("group_name", { ascending: true })
+      .order("key", { ascending: true }),
+
+    supabase.from("roles").select("id,name,label").order("name", {
+      ascending: true,
+    }),
+
+    supabase.from("companies").select("id,name,status").order("name", {
+      ascending: true,
+    }),
+
+    supabase.from("role_permissions").select("id,role_id,permission_id"),
+
+    supabase.from("role_company_access").select("id,role_id,company_id"),
+  ]);
+
+  ensureOkResponses([
+    permissionsRes,
+    rolesRes,
+    companiesRes,
+    rolePermissionsRes,
+    roleCompanyAccessRes,
+  ]);
+
+  return {
+    permissions: permissionsRes.data || [],
+    roles: rolesRes.data || [],
+    companies: companiesRes.data || [],
+    rolePermissions: rolePermissionsRes.data || [],
+    roleCompanyAccess: roleCompanyAccessRes.data || [],
+
+    users: [],
+    userPermissions: [],
+    userCompanyAccess: [],
+  };
+}
+
+async function loadUsersScope(supabase) {
+  const [companiesRes, profilesRes, userPermissionsRes, userCompanyAccessRes] =
+    await Promise.all([
+      supabase.from("companies").select("id,name,status").order("name", {
+        ascending: true,
+      }),
 
       supabase
         .from("profiles")
@@ -592,52 +448,65 @@ export async function GET(req) {
         )
         .order("full_name", { ascending: true }),
 
-      supabase.from("role_permissions").select("id,role_id,permission_id"),
-
       supabase.from("user_permissions").select("id,user_id,permission_id,effect"),
-
-      supabase.from("role_company_access").select("id,role_id,company_id"),
 
       supabase.from("user_company_access").select("id,user_id,company_id,effect"),
     ]);
 
-    const responses = [
-      permissionsRes,
-      rolesRes,
-      companiesRes,
-      profilesRes,
-      rolePermissionsRes,
-      userPermissionsRes,
-      roleCompanyAccessRes,
-      userCompanyAccessRes,
-    ];
+  ensureOkResponses([
+    companiesRes,
+    profilesRes,
+    userPermissionsRes,
+    userCompanyAccessRes,
+  ]);
 
-    const failed = responses.find((res) => res.error);
+  const companyMap = buildCompanyNameMap(companiesRes.data || []);
+  const normalizedUsers = normalizeUserRows(profilesRes.data || [], companyMap);
 
-    if (failed?.error) {
-      console.error("ADMIN_PERMISSIONS_LOAD_FAILED:", {
-        message: failed.error.message,
-        details: failed.error.details,
-        hint: failed.error.hint,
-        code: failed.error.code,
-      });
+  return {
+    users: normalizedUsers,
+    userPermissions: userPermissionsRes.data || [],
+    userCompanyAccess: userCompanyAccessRes.data || [],
+  };
+}
 
-      throw failed.error;
+async function loadAllScope(supabase) {
+  const [baseData, usersData] = await Promise.all([
+    loadBaseScope(supabase),
+    loadUsersScope(supabase),
+  ]);
+
+  return {
+    ...baseData,
+    ...usersData,
+  };
+}
+
+export async function GET(req) {
+  const supabase = getAdminClient();
+
+  try {
+    const guard = await requireAdmin(req, supabase);
+
+    if (guard.error) return guard.error;
+
+    await maybeSeed(req, supabase);
+
+    const { searchParams } = new URL(req.url);
+    const scope = searchParams.get("scope") || "all";
+
+    if (scope === "base") {
+      const data = await loadBaseScope(supabase);
+      return NextResponse.json(data);
     }
 
-    const companyMap = buildCompanyNameMap(companiesRes.data || []);
-    const normalizedUsers = normalizeUserRows(profilesRes.data || [], companyMap);
+    if (scope === "users") {
+      const data = await loadUsersScope(supabase);
+      return NextResponse.json(data);
+    }
 
-    return NextResponse.json({
-      permissions: permissionsRes.data || [],
-      roles: rolesRes.data || [],
-      companies: companiesRes.data || [],
-      users: normalizedUsers,
-      rolePermissions: rolePermissionsRes.data || [],
-      userPermissions: userPermissionsRes.data || [],
-      roleCompanyAccess: roleCompanyAccessRes.data || [],
-      userCompanyAccess: userCompanyAccessRes.data || [],
-    });
+    const data = await loadAllScope(supabase);
+    return NextResponse.json(data);
   } catch (err) {
     console.error("PERMISSIONS_GET_ERROR:", {
       message: err?.message,

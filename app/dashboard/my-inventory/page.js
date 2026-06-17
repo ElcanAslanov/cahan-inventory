@@ -1792,8 +1792,7 @@ export default function MyInventoryPage() {
           <div className="settings-empty">
             <strong>İnventar tapılmadı</strong>
             <p>
-              Bu istifadəçi üçün aktiv təhkim tapılmadı və ya inventory_id
-              inventory_items.id ilə uyğun gəlmir.
+              Bu istifadəçiyə təhkim olunmuş inventar tapılmadı. Əgər təhkim olunmuş inventar olduğunu düşünürsünüzsə, administratorunuzla əlaqə saxlayın.
             </p>
           </div>
         ) : (
